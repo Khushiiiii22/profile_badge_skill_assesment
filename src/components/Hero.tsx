@@ -73,7 +73,7 @@ const Hero = () => {
                   <Award className="h-6 w-6 text-secondary" />
                 </div>
                 <div>
-                  <p className="font-semibold">₹99 Only</p>
+                  <p className="font-semibold">₹1 Only</p>
                   <p className="text-sm text-muted-foreground">Per Assessment</p>
                 </div>
               </div>

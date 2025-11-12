@@ -31,7 +31,7 @@ const Pricing = () => {
               <div className="text-center space-y-2">
                 <CardTitle className="text-3xl">Per Assessment</CardTitle>
                 <div className="flex items-baseline justify-center gap-2">
-                  <span className="text-5xl font-bold">₹99</span>
+                  <span className="text-5xl font-bold">₹1</span>
                   <span className="text-lg opacity-90">only</span>
                 </div>
                 <p className="text-white/90">One-time payment per skill</p>

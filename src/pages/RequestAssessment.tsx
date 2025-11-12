@@ -282,7 +282,7 @@ const RequestAssessment = () => {
                       <p className="text-sm text-muted-foreground">One-time payment</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-3xl font-bold text-primary">₹99</p>
+                      <p className="text-3xl font-bold text-primary">₹1</p>
                       <p className="text-xs text-muted-foreground">via Instamojo</p>
                     </div>
                   </div>

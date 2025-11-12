@@ -139,7 +139,7 @@ const handler = async (req: Request): Promise<Response> => {
       .from('transactions')
       .insert({
         user_id: userId,
-        amount: 99,
+        amount: 1,
         payment_status: 'completed',
         razorpay_payment_id: payment_id,
         razorpay_order_id: payment_request_id,
