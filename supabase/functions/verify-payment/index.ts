@@ -112,9 +112,14 @@ const handler = async (req: Request): Promise<Response> => {
     
     console.log('✅ Payment verified successfully');
 
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    // Initialize Supabase client with proper error handling
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Supabase credentials not configured');
+    }
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Get auth header to identify user
