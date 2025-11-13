@@ -127,7 +127,7 @@ const GetAssessed = () => {
                   <ul className="text-sm text-muted-foreground space-y-1 ml-7">
                     <li>• We'll match you with a certified assessor</li>
                     <li>• You'll receive assessment details via email</li>
-                    <li>• Complete payment of ₹1 to confirm</li>
+                    <li>• Complete payment of ₹10 to confirm</li>
                     <li>• Get your badge and certificate after assessment</li>
                   </ul>
                 </div>
