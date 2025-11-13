@@ -154,7 +154,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     const instamojoPayload = {
       purpose: "Skill Assessment Fee",
-      amount: "1",
+      amount: "10",
       buyer_name: name,
       email: email,
       phone: mobile,
