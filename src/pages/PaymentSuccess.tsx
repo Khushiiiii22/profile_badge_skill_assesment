@@ -45,6 +45,7 @@ const PaymentSuccess = () => {
           return;
         }
 
+        // Verify payment with backend
         const { data, error } = await supabase.functions.invoke('verify-payment', {
           body: {
             payment_id: paymentId,
@@ -56,6 +57,50 @@ const PaymentSuccess = () => {
 
         if (data.verified) {
           setVerified(true);
+          
+          // Get pending assessment data from localStorage
+          const pendingAssessment = localStorage.getItem('pendingAssessment');
+          
+          if (pendingAssessment) {
+            try {
+              const assessmentData = JSON.parse(pendingAssessment);
+              
+              console.log('Creating assessment record:', assessmentData);
+              
+              // Create assessment record in database
+              const { data: newAssessment, error: assessmentError } = await supabase
+                .from('assessments')
+                .insert({
+                  user_id: session.user.id,
+                  skill: assessmentData.skill,
+                  pin_code: assessmentData.pinCode,
+                  school_name: assessmentData.schoolName,
+                  status: 'pending',
+                  payment_id: paymentId,
+                  payment_request_id: paymentRequestId
+                } as any)
+                .select()
+                .single();
+              
+              if (assessmentError) {
+                console.error('Failed to create assessment:', assessmentError);
+                toast({
+                  title: "Warning",
+                  description: "Payment verified but failed to create assessment record. Please contact support.",
+                  variant: "destructive",
+                });
+              } else {
+                console.log('✅ Assessment record created:', newAssessment);
+                // Clear localStorage after successful creation
+                localStorage.removeItem('pendingAssessment');
+              }
+            } catch (parseError) {
+              console.error('Failed to parse assessment data:', parseError);
+            }
+          } else {
+            console.warn('⚠️ No pending assessment data found in localStorage');
+          }
+          
           toast({
             title: "Payment Successful!",
             description: "Your assessment request has been submitted.",
@@ -68,7 +113,7 @@ const PaymentSuccess = () => {
         } else {
           toast({
             title: "Payment Verification Failed",
-            description: "Unable to verify your payment. Please contact support.",
+            description: data.message || "Unable to verify your payment. Please contact support.",
             variant: "destructive",
           });
         }
