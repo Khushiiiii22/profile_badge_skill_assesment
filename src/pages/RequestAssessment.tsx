@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, CreditCard } from "lucide-react";
+import { ArrowLeft, CreditCard, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,10 +32,18 @@ const RequestAssessment = () => {
     password: "",
   });
 
+  // ✨ NEW: Track loading state for submit button
+  const [isLoading, setIsLoading] = useState(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Prevent duplicate submissions
+    if (isLoading) return;
+    
     try {
+      setIsLoading(true);
+
       // Validate form data
       const validated = requestSchema.parse({
         ...formData,
@@ -55,6 +63,7 @@ const RequestAssessment = () => {
       if (existingSession) {
         // User is already logged in
         userId = existingSession.user.id;
+        console.log("User already logged in:", userId);
       } else {
         // Try to sign up, or sign in if user exists
         const { data: authData, error: signUpError } = await supabase.auth.signUp({
@@ -72,6 +81,8 @@ const RequestAssessment = () => {
 
         // If user already exists, try to sign in instead
         if (signUpError?.message === 'User already registered') {
+          console.log("User already registered, attempting sign in...");
+          
           const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
             email: validated.email,
             password: validated.password,
@@ -82,12 +93,14 @@ const RequestAssessment = () => {
           }
           
           userId = signInData.user.id;
+          console.log("Sign in successful:", userId);
         } else if (signUpError) {
           throw signUpError;
         } else if (!authData.user) {
           throw new Error('Failed to create user account');
         } else {
           userId = authData.user.id;
+          console.log("Sign up successful:", userId);
         }
       }
 
@@ -97,6 +110,7 @@ const RequestAssessment = () => {
         description: "Creating payment request...",
       });
 
+      // ✨ UPDATED: Pass assessment data to create-payment function
       const { data, error } = await supabase.functions.invoke('create-payment', {
         body: {
           name: validated.name,
@@ -106,21 +120,52 @@ const RequestAssessment = () => {
           skill,
           pinCode,
           schoolName,
+          // ✨ NEW: Send assessment data separately so it can be passed to webhook
+          assessment_data: {
+            skill,
+            pinCode,
+            schoolName,
+          },
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Payment creation error:', error);
+        throw error;
+      }
+
+      if (!data) {
+        throw new Error('No response from payment service');
+      }
 
       if (data.success && data.paymentUrl) {
-        // Store assessment data in localStorage for later retrieval
-        localStorage.setItem('pendingAssessment', JSON.stringify(data.assessmentData));
+        // ✨ UPDATED: Store full assessment data in localStorage for fallback
+        const assessmentPayload = {
+          ...data.assessmentData,
+          userId,
+          paymentId: data.paymentId,
+          paymentRequestId: data.paymentRequestId,
+        };
+        
+        localStorage.setItem('pendingAssessment', JSON.stringify(assessmentPayload));
+        
+        console.log('✅ Assessment data stored in localStorage:', assessmentPayload);
+        console.log('🔗 Redirecting to Instamojo payment page:', data.paymentUrl);
+        
+        // ✨ NEW: Show success toast before redirect
+        toast({
+          title: "Redirecting to Payment",
+          description: "You'll be redirected to Instamojo to complete the payment...",
+        });
         
         // Redirect to Instamojo payment page
         window.location.href = data.paymentUrl;
       } else {
-        throw new Error('Failed to create payment request');
+        throw new Error(data.error || 'Failed to create payment request');
       }
     } catch (error: any) {
+      setIsLoading(false);
+      
       if (error instanceof z.ZodError) {
         toast({
           title: "Validation Error",
@@ -164,7 +209,11 @@ const RequestAssessment = () => {
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
       <div className="container mx-auto px-4 py-12">
         <Link to="/get-assessed">
-          <Button variant="ghost" className="mb-8">
+          <Button 
+            variant="ghost" 
+            className="mb-8"
+            disabled={isLoading}
+          >
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
@@ -218,6 +267,7 @@ const RequestAssessment = () => {
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     maxLength={100}
                     required
+                    disabled={isLoading}
                   />
                 </div>
 
@@ -232,6 +282,7 @@ const RequestAssessment = () => {
                     min="5"
                     max="100"
                     required
+                    disabled={isLoading}
                   />
                 </div>
 
@@ -245,6 +296,7 @@ const RequestAssessment = () => {
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     maxLength={255}
                     required
+                    disabled={isLoading}
                   />
                 </div>
 
@@ -258,6 +310,7 @@ const RequestAssessment = () => {
                     onChange={(e) => setFormData({ ...formData, mobile: e.target.value.replace(/\D/g, '') })}
                     maxLength={10}
                     required
+                    disabled={isLoading}
                   />
                 </div>
 
@@ -272,6 +325,7 @@ const RequestAssessment = () => {
                     maxLength={100}
                     minLength={6}
                     required
+                    disabled={isLoading}
                   />
                 </div>
 
@@ -288,9 +342,25 @@ const RequestAssessment = () => {
                   </div>
                 </div>
 
-                <Button type="submit" variant="hero" size="lg" className="w-full">
-                  <CreditCard className="mr-2 h-5 w-5" />
-                  Proceed to Payment
+                {/* ✨ NEW: Show loading state on submit button */}
+                <Button 
+                  type="submit" 
+                  variant="hero" 
+                  size="lg" 
+                  className="w-full"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard className="mr-2 h-5 w-5" />
+                      Proceed to Payment
+                    </>
+                  )}
                 </Button>
 
                 <p className="text-center text-sm text-muted-foreground">

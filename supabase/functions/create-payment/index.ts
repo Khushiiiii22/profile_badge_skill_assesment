@@ -13,6 +13,11 @@ interface PaymentRequest {
   pinCode: string;
   schoolName: string;
   age: number;
+  assessment_data?: {
+    skill: string;
+    pinCode: string;
+    schoolName: string;
+  };
 }
 
 // Get OAuth access token from Instamojo
@@ -131,9 +136,15 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { name, email, mobile, skill, pinCode, schoolName, age }: PaymentRequest = await req.json();
+    const paymentReq: PaymentRequest = await req.json();
+    const { name, email, mobile, skill, pinCode, schoolName, age, assessment_data } = paymentReq;
 
     console.log("Creating payment request for:", { name, email, mobile });
+
+    // Validate required fields
+    if (!name || !email || !mobile || !skill || !pinCode || !schoolName || !age) {
+      throw new Error("Missing required payment request fields");
+    }
 
     // Get Instamojo OAuth credentials
     const INSTAMOJO_CLIENT_ID = Deno.env.get("INSTAMOJO_CLIENT_ID");
@@ -152,6 +163,20 @@ const handler = async (req: Request): Promise<Response> => {
     const origin = req.headers.get("origin") || "https://preview--profile-badge-hub.lovable.app/request-assessment";
     const redirectUrl = `${origin}/payment-success`;
 
+    // Get Supabase URL for webhook
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    if (!supabaseUrl) {
+      throw new Error("SUPABASE_URL not configured");
+    }
+
+    // Prepare assessment data as JSON string to pass through webhook
+    const assessmentDataStr = JSON.stringify({
+      skill,
+      pinCode,
+      schoolName,
+    });
+
+    // ✨ NEW: Include assessment data in webhook payload so verify-payment can access it
     const instamojoPayload = {
       purpose: "Skill Assessment Fee",
       amount: "10",
@@ -159,10 +184,12 @@ const handler = async (req: Request): Promise<Response> => {
       email: email,
       phone: mobile,
       redirect_url: redirectUrl,
-      webhook: `${Deno.env.get("SUPABASE_URL")}/functions/v1/verify-payment`,
+      webhook: `${supabaseUrl}/functions/v1/verify-payment`,
       send_email: true,
       send_sms: false,
       allow_repeated_payments: false,
+      // ✨ NEW: Pass custom fields that Instamojo will include in webhook
+      notes: `assessment_data=${encodeURIComponent(assessmentDataStr)}&age=${age}`,
     };
 
     console.log("Calling Instamojo API with payload:", { ...instamojoPayload, phone: "***" });
@@ -188,12 +215,15 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log("Payment created successfully:", { paymentId, paymentUrl });
 
-    // Store the payment request data in the response for later verification
+    // ✨ Store assessment data for later verification
+    // This is returned to frontend and stored in localStorage
+    // Then passed to verify-payment via the webhook
     return new Response(
       JSON.stringify({
         success: true,
         paymentUrl: paymentUrl,
         paymentId: paymentId,
+        paymentRequestId: paymentId,
         assessmentData: {
           name,
           email,
@@ -207,7 +237,7 @@ const handler = async (req: Request): Promise<Response> => {
       {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
+      }
     );
   } catch (error: any) {
     console.error("Error in create-payment function:", error);
@@ -219,7 +249,7 @@ const handler = async (req: Request): Promise<Response> => {
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
+      }
     );
   }
 };

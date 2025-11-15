@@ -6,6 +6,29 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// ✨ NEW: Helper function to parse assessment data from notes field
+function parseAssessmentDataFromNotes(notes: string): any {
+  try {
+    if (!notes) return null;
+    
+    // Parse URLSearchParams format: "assessment_data=...&age=..."
+    const params = new URLSearchParams(notes);
+    const assessmentDataStr = params.get('assessment_data');
+    
+    if (!assessmentDataStr) return null;
+    
+    // Decode and parse the JSON
+    const decoded = decodeURIComponent(assessmentDataStr);
+    const parsed = JSON.parse(decoded);
+    
+    console.log('✅ Successfully parsed assessment data from notes');
+    return parsed;
+  } catch (error) {
+    console.warn('⚠️ Failed to parse assessment data from notes:', error);
+    return null;
+  }
+}
+
 const handler = async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -15,10 +38,15 @@ const handler = async (req: Request): Promise<Response> => {
     // Handle both webhook calls from Instamojo AND direct API calls from frontend
     const contentType = req.headers.get('content-type') || '';
     let paymentData: any;
+    let assessmentData: any = null;
 
     if (contentType.includes('application/x-www-form-urlencoded')) {
       // Webhook from Instamojo (form data)
       const formData = await req.formData();
+      
+      // ✨ NEW: Extract notes field which contains assessment data
+      const notes = formData.get('notes') as string || '';
+      
       paymentData = {
         payment_id: formData.get('payment_id'),
         payment_request_id: formData.get('payment_request_id'),
@@ -28,10 +56,26 @@ const handler = async (req: Request): Promise<Response> => {
         amount: formData.get('amount'),
         mac: formData.get('mac'),
       };
+      
+      // ✨ NEW: Parse assessment data from notes
+      if (notes) {
+        assessmentData = parseAssessmentDataFromNotes(notes);
+        if (assessmentData) {
+          console.log('📋 Assessment data extracted from webhook:', assessmentData);
+        }
+      }
+      
       console.log('📨 Webhook received from Instamojo:', paymentData);
     } else {
       // Direct API call from frontend (JSON)
       paymentData = await req.json();
+      
+      // ✨ NEW: Extract assessment_data if provided in JSON
+      if (paymentData.assessment_data) {
+        assessmentData = paymentData.assessment_data;
+        console.log('📋 Assessment data from frontend API call:', assessmentData);
+      }
+      
       console.log('📞 API call from frontend:', paymentData);
     }
 
@@ -55,7 +99,7 @@ const handler = async (req: Request): Promise<Response> => {
     const { data: existingTransaction } = await supabase
       .from('transactions')
       .select('*')
-      .eq('razorpay_payment_id', payment_id)
+      .eq('instamojo_payment_id', payment_id)
       .single();
 
     if (existingTransaction) {
@@ -182,8 +226,8 @@ const handler = async (req: Request): Promise<Response> => {
         user_id: userId,
         amount: parseFloat(paymentData.amount) || 10,
         payment_status: 'completed',
-        razorpay_payment_id: payment_id,
-        razorpay_order_id: payment_request_id,
+        instamojo_payment_id: payment_id,
+        instamojo_order_id: payment_request_id,
       });
 
     if (transactionError) {
@@ -193,11 +237,57 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log('💾 Transaction saved successfully');
 
+    // ✨ CREATE ASSESSMENT RECORD after payment is verified
+    console.log('📋 Creating assessment record...');
+    
+    try {
+      // ✨ UPDATED: Use the parsed assessmentData (from webhook notes or API body)
+      if (assessmentData && assessmentData.skill && assessmentData.pinCode && assessmentData.schoolName) {
+        // Create assessment in database
+        const { data: newAssessment, error: assessmentError } = await supabase
+          .from('assessments')
+          .insert({
+            user_id: userId,
+            skill: assessmentData.skill,
+            pin_code: assessmentData.pinCode,
+            school_name: assessmentData.schoolName,
+            status: 'pending',
+            instamojo_payment_id: payment_id,
+            instamojo_payment_request_id: payment_request_id,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
+
+        if (assessmentError) {
+          console.error('⚠️ Warning: Failed to create assessment:', assessmentError);
+          console.error('Assessment error details:', assessmentError.details);
+          // Don't throw - payment was successful, just log the warning
+          // Frontend will handle assessment creation as fallback
+        } else {
+          console.log('✅ Assessment record created successfully:', {
+            id: newAssessment?.id,
+            skill: newAssessment?.skill,
+            status: newAssessment?.status,
+          });
+        }
+      } else {
+        console.warn('⚠️ No assessment data available - frontend will create it as fallback');
+        console.warn('Assessment data received:', assessmentData);
+      }
+    } catch (assessmentParseError) {
+      console.warn('⚠️ Could not parse/process assessment data:', assessmentParseError);
+      // Don't throw - payment was successful
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true, 
         verified: true,
-        message: 'Payment verified and recorded'
+        message: 'Payment verified and recorded',
+        user_id: userId,
+        assessment_created: !!assessmentData,
       }),
       {
         status: 200,
