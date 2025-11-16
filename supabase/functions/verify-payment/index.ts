@@ -6,21 +6,15 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// ✨ NEW: Helper function to parse assessment data from notes field
+// Helper for notes parsing (unchanged)
 function parseAssessmentDataFromNotes(notes: string): any {
   try {
     if (!notes) return null;
-    
-    // Parse URLSearchParams format: "assessment_data=...&age=..."
     const params = new URLSearchParams(notes);
     const assessmentDataStr = params.get('assessment_data');
-    
     if (!assessmentDataStr) return null;
-    
-    // Decode and parse the JSON
     const decoded = decodeURIComponent(assessmentDataStr);
     const parsed = JSON.parse(decoded);
-    
     console.log('✅ Successfully parsed assessment data from notes');
     return parsed;
   } catch (error) {
@@ -33,20 +27,14 @@ const handler = async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
-
   try {
-    // Handle both webhook calls from Instamojo AND direct API calls from frontend
     const contentType = req.headers.get('content-type') || '';
     let paymentData: any;
     let assessmentData: any = null;
 
     if (contentType.includes('application/x-www-form-urlencoded')) {
-      // Webhook from Instamojo (form data)
       const formData = await req.formData();
-      
-      // ✨ NEW: Extract notes field which contains assessment data
       const notes = formData.get('notes') as string || '';
-      
       paymentData = {
         payment_id: formData.get('payment_id'),
         payment_request_id: formData.get('payment_request_id'),
@@ -56,43 +44,32 @@ const handler = async (req: Request): Promise<Response> => {
         amount: formData.get('amount'),
         mac: formData.get('mac'),
       };
-      
-      // ✨ NEW: Parse assessment data from notes
       if (notes) {
         assessmentData = parseAssessmentDataFromNotes(notes);
         if (assessmentData) {
           console.log('📋 Assessment data extracted from webhook:', assessmentData);
         }
       }
-      
       console.log('📨 Webhook received from Instamojo:', paymentData);
     } else {
-      // Direct API call from frontend (JSON)
       paymentData = await req.json();
-      
-      // ✨ NEW: Extract assessment_data if provided in JSON
       if (paymentData.assessment_data) {
         assessmentData = paymentData.assessment_data;
         console.log('📋 Assessment data from frontend API call:', assessmentData);
       }
-      
       console.log('📞 API call from frontend:', paymentData);
     }
 
     const { payment_id, payment_request_id, payment_status } = paymentData;
-
     if (!payment_id || !payment_request_id) {
       throw new Error('Missing payment_id or payment_request_id');
     }
 
-    // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    
     if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error('Supabase credentials not configured');
     }
-
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Check if transaction already exists
@@ -101,14 +78,28 @@ const handler = async (req: Request): Promise<Response> => {
       .select('*')
       .eq('instamojo_payment_id', payment_id)
       .single();
-
     if (existingTransaction) {
       console.log('✅ Transaction already recorded');
+      // Also unlock assessment access if not yet done
+      const buyerEmail = paymentData.buyer_email || paymentData.buyer;
+      if (buyerEmail) {
+        const { data: userData } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('email', buyerEmail)
+          .single();
+        if (userData?.id) {
+          await supabase
+            .from('profiles')
+            .update({ assessment_access: true })
+            .eq('id', userData.id);
+        }
+      }
       return new Response(
-        JSON.stringify({ 
-          success: true, 
+        JSON.stringify({
+          success: true,
           verified: true,
-          message: 'Payment already verified'
+          message: 'Payment already verified and access unlocked'
         }),
         {
           status: 200,
@@ -117,25 +108,18 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // For webhook calls, trust the payment_status directly
-    // For frontend calls, verify with Instamojo API
     let isVerified = false;
-
     if (payment_status === 'Credit') {
-      // Webhook confirmation - payment is completed
       isVerified = true;
       console.log('✅ Payment verified via webhook');
     } else {
-      // Frontend call - verify with Instamojo API
       console.log('🔍 Verifying payment with Instamojo API...');
-      
       const INSTAMOJO_CLIENT_ID = Deno.env.get("INSTAMOJO_CLIENT_ID");
       const INSTAMOJO_CLIENT_SECRET = Deno.env.get("INSTAMOJO_CLIENT_SECRET");
 
       if (!INSTAMOJO_CLIENT_ID || !INSTAMOJO_CLIENT_SECRET) {
         throw new Error('Instamojo credentials not configured');
       }
-
       // Get OAuth token
       const tokenUrl = "https://api.instamojo.com/oauth2/token/";
       const tokenResponse = await fetch(tokenUrl, {
@@ -151,7 +135,6 @@ const handler = async (req: Request): Promise<Response> => {
       if (!tokenResponse.ok) {
         throw new Error('Failed to get Instamojo access token');
       }
-
       const { access_token } = await tokenResponse.json();
 
       // Verify payment
@@ -169,7 +152,7 @@ const handler = async (req: Request): Promise<Response> => {
       }
 
       const verifyData = await verifyResponse.json();
-      const paymentFound = (verifyData.payments || []).some((url: string) => 
+      const paymentFound = (verifyData.payments || []).some((url: string) =>
         url.includes(payment_id)
       );
 
@@ -179,8 +162,8 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (!isVerified) {
       return new Response(
-        JSON.stringify({ 
-          success: false, 
+        JSON.stringify({
+          success: false,
           verified: false,
           message: 'Payment not completed'
         }),
@@ -194,17 +177,14 @@ const handler = async (req: Request): Promise<Response> => {
     // Get user from payment request email
     const buyerEmail = paymentData.buyer_email || paymentData.buyer;
     let userId = null;
-
     if (buyerEmail) {
       const { data: userData } = await supabase
         .from('profiles')
         .select('id')
         .eq('email', buyerEmail)
         .single();
-      
       userId = userData?.id;
     }
-
     if (!userId) {
       // Try to get from auth header if frontend call
       const authHeader = req.headers.get('Authorization');
@@ -214,12 +194,11 @@ const handler = async (req: Request): Promise<Response> => {
         userId = user?.id;
       }
     }
-
     if (!userId) {
       throw new Error('Unable to identify user for this payment');
     }
 
-    // Create transaction record
+    // Save transaction record
     const { error: transactionError } = await supabase
       .from('transactions')
       .insert({
@@ -229,21 +208,21 @@ const handler = async (req: Request): Promise<Response> => {
         instamojo_payment_id: payment_id,
         instamojo_order_id: payment_request_id,
       });
-
     if (transactionError) {
       console.error('Error creating transaction:', transactionError);
       throw new Error('Failed to save transaction');
     }
-
     console.log('💾 Transaction saved successfully');
 
-    // ✨ CREATE ASSESSMENT RECORD after payment is verified
-    console.log('📋 Creating assessment record...');
-    
+    // Unlock assessment access for the user
+    await supabase
+      .from('profiles')
+      .update({ assessment_access: true }) // Or the field your frontend expects
+      .eq('id', userId);
+
+    // Optionally create assessment record if assessmentData provided
     try {
-      // ✨ UPDATED: Use the parsed assessmentData (from webhook notes or API body)
       if (assessmentData && assessmentData.skill && assessmentData.pinCode && assessmentData.schoolName) {
-        // Create assessment in database
         const { data: newAssessment, error: assessmentError } = await supabase
           .from('assessments')
           .insert({
@@ -262,9 +241,7 @@ const handler = async (req: Request): Promise<Response> => {
 
         if (assessmentError) {
           console.error('⚠️ Warning: Failed to create assessment:', assessmentError);
-          console.error('Assessment error details:', assessmentError.details);
           // Don't throw - payment was successful, just log the warning
-          // Frontend will handle assessment creation as fallback
         } else {
           console.log('✅ Assessment record created successfully:', {
             id: newAssessment?.id,
@@ -274,18 +251,16 @@ const handler = async (req: Request): Promise<Response> => {
         }
       } else {
         console.warn('⚠️ No assessment data available - frontend will create it as fallback');
-        console.warn('Assessment data received:', assessmentData);
       }
     } catch (assessmentParseError) {
       console.warn('⚠️ Could not parse/process assessment data:', assessmentParseError);
-      // Don't throw - payment was successful
     }
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         verified: true,
-        message: 'Payment verified and recorded',
+        message: 'Payment verified and recorded, assessment access unlocked',
         user_id: userId,
         assessment_created: !!assessmentData,
       }),
@@ -294,14 +269,13 @@ const handler = async (req: Request): Promise<Response> => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     );
-
   } catch (error: any) {
     console.error('❌ Error in verify-payment:', error);
     return new Response(
-      JSON.stringify({ 
-        success: false, 
+      JSON.stringify({
+        success: false,
         verified: false,
-        error: error.message 
+        error: error.message
       }),
       {
         status: 500,
