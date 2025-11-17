@@ -72,8 +72,3 @@ services:
       - path: /*.ico
         name: Cache-Control
         value: "public, max-age=31536000, immutable"
-    # Redirects for SPA routing
-    redirects:
-      - source: /*
-        destination: /index.html
-        type: 200
