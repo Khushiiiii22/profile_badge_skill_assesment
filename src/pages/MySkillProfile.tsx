@@ -99,13 +99,12 @@ const MySkillProfile = () => {
   };
 
   const getSkillData = (skillName: string) => {
-    const assessment = assessments.find(a => a.skill_name === skillName);
-    const assessmentData = assessment?.assessment_data as any;
+    const assessment = assessments.find(a => a.skill === skillName);
     return {
       name: skillName,
-      progress: assessmentData?.score || 0,
-      badge: assessmentData?.status === 'completed' ? 'Certified' : null,
-      status: assessmentData?.status || 'not_assessed',
+      progress: assessment?.score || 0,
+      badge: assessment?.status === 'completed' ? 'Certified' : null,
+      status: assessment?.status || 'not_assessed',
       assessment: assessment,
     };
   };
