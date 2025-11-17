@@ -28,7 +28,7 @@ if (!SUPABASE_SERVICE_ROLE_KEY) {
 }
 
 // Use service role key for seeding to bypass RLS
-const supabase = createClient(SUPABASE_URL, keyToUse, {
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: {
     autoRefreshToken: false,
     persistSession: false
