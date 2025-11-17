@@ -1,0 +1,79 @@
+# Render Configuration File
+# https://render.com/docs/yaml-spec
+
+services:
+  # Static Site Service for the React/Vite application
+  - type: web
+    name: profile-badge-skill-assessment
+    env: static
+    buildCommand: npm run build
+    staticPublishPath: dist
+    # Environment variables
+    envVars:
+      - key: NODE_VERSION
+        value: 18
+      # Supabase Configuration (replace with your values or use Render environment variables)
+      - key: VITE_SUPABASE_PROJECT_ID
+        sync: false
+      - key: VITE_SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: VITE_SUPABASE_URL
+        sync: false
+      # Instamojo Configuration (replace with your values or use Render environment variables)
+      - key: INSTAMOJO_CLIENT_ID
+        sync: false
+      - key: INSTAMOJO_CLIENT_SECRET
+        sync: false
+    # Build hooks
+    buildFilter:
+      paths:
+        - src/**/*.tsx
+        - src/**/*.ts
+        - src/**/*.css
+        - public/**
+        - package.json
+        - vite.config.ts
+        - tailwind.config.ts
+        - tsconfig.json
+        - postcss.config.js
+    # Headers for security and performance
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: X-XSS-Protection
+        value: "1; mode=block"
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      # Cache static assets
+      - path: /assets/*
+        name: Cache-Control
+        value: "public, max-age=31536000, immutable"
+      - path: /*.js
+        name: Cache-Control
+        value: "public, max-age=31536000, immutable"
+      - path: /*.css
+        name: Cache-Control
+        value: "public, max-age=31536000, immutable"
+      - path: /*.png
+        name: Cache-Control
+        value: "public, max-age=31536000, immutable"
+      - path: /*.jpg
+        name: Cache-Control
+        value: "public, max-age=31536000, immutable"
+      - path: /*.svg
+        name: Cache-Control
+        value: "public, max-age=31536000, immutable"
+      - path: /*.ico
+        name: Cache-Control
+        value: "public, max-age=31536000, immutable"
+    # Redirects for SPA routing
+    redirects:
+      - source: /*
+        destination: /index.html
+        type: 200
