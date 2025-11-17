@@ -54,12 +54,12 @@ const TakeAssessment = () => {
 
       setAssessment(assessmentData);
 
-      // Fetch questions for the skill - use skill_name from the current schema
-      console.log('Fetching questions for skill:', assessmentData.skill_name);
+      // Fetch questions for the skill - use skill from the current schema
+      console.log('Fetching questions for skill:', assessmentData.skill);
       const { data: questionsData, error: questionsError } = await supabase
         .from('questions')
         .select('*')
-        .eq('skill', assessmentData.skill_name || '');
+        .eq('skill', assessmentData.skill || '');
 
       if (questionsError) throw questionsError;
 
@@ -118,16 +118,13 @@ const TakeAssessment = () => {
       setScore(calculatedScore);
       setPassed(passedAssessment);
 
-      // Update assessment record - store score in assessment_data JSON field
-      const { error: updateError } = await supabase
+    // Update assessment record with score and status      const { error: updateError } = await supabase
         .from('assessments')
-        .update({
-          assessment_data: {
-            ...((assessment as any).assessment_data || {}),
-            score: calculatedScore,
-            assessment_date: new Date().toISOString(),
-            status: passedAssessment ? 'completed' : 'completed' // Mark as completed regardless
-          }
+      .update({
+                status: 'completed',
+                score: calculatedScore,
+                assessment_date: new Date().toISOString(),
+              
         })
         .eq('id', assessmentId);
 
@@ -201,7 +198,7 @@ const TakeAssessment = () => {
               </CardHeader>
               <CardContent className="space-y-6">
                 <div>
-                  <h3 className="text-lg font-semibold mb-2">{assessment.skill_name} Assessment</h3>
+                  <h3 className="text-lg font-semibold mb-2">{assessment.skill} Assessment</h3>
                   <div className="text-3xl font-bold mb-2">{score}%</div>
                   <Progress value={score} className="h-3" />
                 </div>
@@ -257,7 +254,7 @@ const TakeAssessment = () => {
             </Button>
 
             <div className="flex items-center justify-between mb-2">
-              <h1 className="text-2xl font-bold">{assessment.skill_name} Assessment</h1>
+              <h1 className="text-2xl font-bold">{assessment.skill} Assessment</h1>
               <Badge variant="outline">
                 Question {currentQuestionIndex + 1} of {questions.length}
               </Badge>
