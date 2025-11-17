@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Helper for notes parsing (unchanged)
+// Helper for notes parsing
 function parseAssessmentDataFromNotes(notes: string): any {
   try {
     if (!notes) return null;
@@ -27,6 +27,7 @@ const handler = async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
+  
   try {
     const contentType = req.headers.get('content-type') || '';
     let paymentData: any;
@@ -78,8 +79,10 @@ const handler = async (req: Request): Promise<Response> => {
       .select('*')
       .eq('instamojo_payment_id', payment_id)
       .single();
+      
     if (existingTransaction) {
       console.log('✅ Transaction already recorded');
+      
       // Also unlock assessment access if not yet done
       const buyerEmail = paymentData.buyer_email || paymentData.buyer;
       if (buyerEmail) {
@@ -88,13 +91,21 @@ const handler = async (req: Request): Promise<Response> => {
           .select('id')
           .eq('email', buyerEmail)
           .single();
+          
         if (userData?.id) {
-          await supabase
+          const { error: accessError } = await supabase
             .from('profiles')
             .update({ assessment_access: true })
             .eq('id', userData.id);
+            
+          if (accessError) {
+            console.error('❌ Failed to update assessment_access for existing transaction:', accessError);
+          } else {
+            console.log('✅ Assessment access unlocked for existing transaction');
+          }
         }
       }
+      
       return new Response(
         JSON.stringify({
           success: true,
@@ -120,6 +131,7 @@ const handler = async (req: Request): Promise<Response> => {
       if (!INSTAMOJO_CLIENT_ID || !INSTAMOJO_CLIENT_SECRET) {
         throw new Error('Instamojo credentials not configured');
       }
+      
       // Get OAuth token
       const tokenUrl = "https://api.instamojo.com/oauth2/token/";
       const tokenResponse = await fetch(tokenUrl, {
@@ -208,19 +220,34 @@ const handler = async (req: Request): Promise<Response> => {
         instamojo_payment_id: payment_id,
         instamojo_order_id: payment_request_id,
       });
+      
     if (transactionError) {
-      console.error('Error creating transaction:', transactionError);
+      console.error('❌ Error creating transaction:', transactionError);
       throw new Error('Failed to save transaction');
     }
     console.log('💾 Transaction saved successfully');
 
-    // Unlock assessment access for the user
-    await supabase
+    // ✅ CRITICAL: Unlock assessment access for the user
+    const { error: accessError } = await supabase
       .from('profiles')
-      .update({ assessment_access: true }) // Or the field your frontend expects
+      .update({ assessment_access: true })
       .eq('id', userId);
 
-    // Optionally create assessment record if assessmentData provided
+    if (accessError) {
+      console.error('❌ CRITICAL: Failed to update assessment_access:', accessError);
+      console.error('Error details:', {
+        message: accessError.message,
+        details: accessError.details,
+        hint: accessError.hint,
+        code: accessError.code
+      });
+      // Don't throw - payment was successful, but log the critical error
+      // This allows the transaction to complete while alerting about access issue
+    } else {
+      console.log('✅ Assessment access successfully granted to user:', userId);
+    }
+
+    // Create assessment record if assessmentData provided
     try {
       if (assessmentData && assessmentData.skill && assessmentData.pinCode && assessmentData.schoolName) {
         const { data: newAssessment, error: assessmentError } = await supabase
@@ -231,8 +258,8 @@ const handler = async (req: Request): Promise<Response> => {
             pin_code: assessmentData.pinCode,
             school_name: assessmentData.schoolName,
             status: 'pending',
-            instamojo_payment_id: payment_id,
-            instamojo_payment_request_id: payment_request_id,
+            payment_id: payment_id,
+            payment_request_id: payment_request_id,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
@@ -241,7 +268,11 @@ const handler = async (req: Request): Promise<Response> => {
 
         if (assessmentError) {
           console.error('⚠️ Warning: Failed to create assessment:', assessmentError);
-          // Don't throw - payment was successful, just log the warning
+          console.error('Assessment error details:', {
+            message: assessmentError.message,
+            details: assessmentError.details,
+            hint: assessmentError.hint
+          });
         } else {
           console.log('✅ Assessment record created successfully:', {
             id: newAssessment?.id,
@@ -250,7 +281,8 @@ const handler = async (req: Request): Promise<Response> => {
           });
         }
       } else {
-        console.warn('⚠️ No assessment data available - frontend will create it as fallback');
+        console.warn('⚠️ No complete assessment data - frontend will create it as fallback');
+        console.warn('Received assessment data:', assessmentData);
       }
     } catch (assessmentParseError) {
       console.warn('⚠️ Could not parse/process assessment data:', assessmentParseError);
@@ -263,12 +295,14 @@ const handler = async (req: Request): Promise<Response> => {
         message: 'Payment verified and recorded, assessment access unlocked',
         user_id: userId,
         assessment_created: !!assessmentData,
+        access_granted: !accessError,
       }),
       {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     );
+    
   } catch (error: any) {
     console.error('❌ Error in verify-payment:', error);
     return new Response(
@@ -286,3 +320,4 @@ const handler = async (req: Request): Promise<Response> => {
 };
 
 serve(handler);
+s
