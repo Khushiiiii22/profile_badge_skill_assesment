@@ -83,6 +83,8 @@ const MySkillProfile = () => {
         variant: "destructive",
       });
     } else {
+      console.log('Fetched assessments from DB:', assessmentData);
+      console.log('Assessment columns:', assessmentData ? assessmentData.map(a => ({ id: a.id, skill: (a as any).skill, skill_name: a.skill_name, status: (a as any).status })) : 'No assessments');
       setAssessments(assessmentData || []);
     }
 
@@ -99,7 +101,8 @@ const MySkillProfile = () => {
   };
 
   const getSkillData = (skillName: string) => {
-    const assessment = assessments.find(a => a.skill === skillName);
+    const assessment = assessments.find(a => a.skill === skillName || a.skill_name === skillName);
+    console.log('Finding assessment for skill:', skillName, 'found:', assessment);
     return {
       name: skillName,
       progress: assessment?.score || 0,

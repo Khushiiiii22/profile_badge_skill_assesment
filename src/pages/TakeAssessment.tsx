@@ -6,13 +6,32 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, ArrowLeft, Award, CheckCircle, Clock, XCircle } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle, Clock, XCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Tables } from "@/integrations/supabase/types";
 
 type Question = Tables<'questions'>;
-type Assessment = Tables<'assessments'>;
+
+// Use the actual database schema from migrations, not the generated types
+type Assessment = {
+  id: string;
+  user_id: string;
+  skill: string;
+  pin_code: string;
+  school_name: string;
+  status: string;
+  instamojo_payment_id?: string;
+  instamojo_payment_request_id?: string;
+  assessor_id?: string;
+  assessment_date?: string;
+  score?: number;
+  feedback?: string;
+  certificate_url?: string;
+  badge_url?: string;
+  created_at?: string;
+  updated_at?: string;
+};
 
 const TakeAssessment = () => {
   const { assessmentId } = useParams<{ assessmentId: string }>();
@@ -39,35 +58,41 @@ const TakeAssessment = () => {
     try {
       setLoading(true);
 
-      console.log('Fetching assessment with ID:', assessmentId);
-
       // Fetch assessment details
+      console.log('assessmentId from URL:', assessmentId);
+      console.log('Current user session check...');
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log('User authenticated:', !!session, 'User ID:', session?.user?.id);
+
       const { data: assessmentData, error: assessmentError } = await supabase
         .from('assessments')
         .select('*')
         .eq('id', assessmentId)
         .single();
+      console.log('assessmentData:', assessmentData, 'error:', assessmentError);
+      console.log('Assessment columns received:', assessmentData ? Object.keys(assessmentData) : 'No data');
+      console.log('Assessment status:', (assessmentData as any)?.status);
+      console.log('Assessment skill field:', (assessmentData as any)?.skill);
 
-      if (assessmentError) throw assessmentError;
-
-      console.log('Assessment data:', assessmentData);
-
+      if (assessmentError || !assessmentData) throw new Error("Assessment not found");
       setAssessment(assessmentData);
 
-      // Fetch questions for the skill - use skill from the current schema
-      console.log('Fetching questions for skill:', assessmentData.skill);
+      // Use the correct field name from the actual database schema (migration)
+      const skillValue = (assessmentData as any)?.skill || '';
+      console.log('Skill value used for questions:', skillValue);
+      if (!skillValue) throw new Error("Assessment is missing skill field");
+
+      // Fetch questions for the skill
       const { data: questionsData, error: questionsError } = await supabase
         .from('questions')
         .select('*')
-        .eq('skill', assessmentData.skill || '');
+        .eq('skill', skillValue);
 
+      console.log('Questions fetched:', questionsData, 'error:', questionsError);
       if (questionsError) throw questionsError;
-
-      console.log('Questions loaded:', questionsData?.length || 0);
-
       setQuestions(questionsData || []);
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('Error fetching assessment/questions:', error);
       toast({
         title: "Error",
         description: "Failed to load assessment questions.",
@@ -118,24 +143,28 @@ const TakeAssessment = () => {
       setScore(calculatedScore);
       setPassed(passedAssessment);
 
-    // Update assessment record with score and status      const { error: updateError } = await supabase
+      // Update assessment record with score and status - using correct field names from migration
+      const updatePayload = {
+        skill: assessment.skill,
+        status: 'completed',
+        score: calculatedScore,
+        assessment_date: new Date().toISOString(),
+      };
+      console.log('Updating assessment with payload:', updatePayload);
+
+      const { error: updateError } = await supabase
         .from('assessments')
-      .update({
-                status: 'completed',
-                score: calculatedScore,
-                assessment_date: new Date().toISOString(),
-              
-        })
+        .update(updatePayload as any)
         .eq('id', assessmentId);
 
       if (updateError) throw updateError;
 
       setShowResults(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error submitting assessment:', error);
       toast({
         title: "Error",
-        description: "Failed to submit assessment.",
+        description: error.message || "Failed to submit assessment.",
         variant: "destructive",
       });
     } finally {
@@ -198,11 +227,12 @@ const TakeAssessment = () => {
               </CardHeader>
               <CardContent className="space-y-6">
                 <div>
-                  <h3 className="text-lg font-semibold mb-2">{assessment.skill} Assessment</h3>
+                  <h3 className="text-lg font-semibold mb-2">
+                    {assessment.skill} Assessment
+                  </h3>
                   <div className="text-3xl font-bold mb-2">{score}%</div>
                   <Progress value={score} className="h-3" />
                 </div>
-
                 <div className="flex justify-center">
                   <Badge
                     variant={passed ? "default" : "destructive"}
@@ -211,17 +241,15 @@ const TakeAssessment = () => {
                     {passed ? 'PASSED' : 'FAILED'}
                   </Badge>
                 </div>
-
                 <div className="text-left bg-muted/50 p-4 rounded-lg">
                   <h4 className="font-semibold mb-2">Assessment Summary:</h4>
                   <p className="text-sm text-muted-foreground">
-                    You answered {score >= 70 ? Math.round((score / 100) * questions.length) : Math.round((score / 100) * questions.length)} out of {questions.length} questions correctly.
+                    You answered {Math.round((score / 100) * questions.length)} out of {questions.length} questions correctly.
                   </p>
                   <p className="text-sm text-muted-foreground mt-1">
                     Passing threshold: 70%
                   </p>
                 </div>
-
                 <Button onClick={handleBackToProfile} className="w-full">
                   <ArrowLeft className="mr-2 h-4 w-4" />
                   Back to Profile
@@ -252,17 +280,16 @@ const TakeAssessment = () => {
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to Profile
             </Button>
-
             <div className="flex items-center justify-between mb-2">
-              <h1 className="text-2xl font-bold">{assessment.skill} Assessment</h1>
+              <h1 className="text-2xl font-bold">
+                  {assessment.skill} Assessment
+                </h1>
               <Badge variant="outline">
                 Question {currentQuestionIndex + 1} of {questions.length}
               </Badge>
             </div>
-
             <Progress value={progress} className="h-2" />
           </div>
-
           {/* Question Card */}
           <Card className="mb-6">
             <CardHeader>
@@ -284,7 +311,6 @@ const TakeAssessment = () => {
               </RadioGroup>
             </CardContent>
           </Card>
-
           {/* Navigation */}
           <div className="flex justify-between">
             <Button
@@ -294,7 +320,6 @@ const TakeAssessment = () => {
             >
               Previous
             </Button>
-
             {currentQuestionIndex === questions.length - 1 ? (
               <Button
                 onClick={handleSubmit}
@@ -311,7 +336,6 @@ const TakeAssessment = () => {
               </Button>
             )}
           </div>
-
           <div className="text-center mt-4 text-sm text-muted-foreground">
             {answersFilled} of {questions.length} questions answered
           </div>
