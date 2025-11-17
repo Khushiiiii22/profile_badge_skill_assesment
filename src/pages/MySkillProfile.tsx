@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Award, LogOut, Plus, User, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { Award, LogOut, Plus, User, Clock, CheckCircle, XCircle, AlertCircle, PlayCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -99,12 +99,13 @@ const MySkillProfile = () => {
   };
 
   const getSkillData = (skillName: string) => {
-    const assessment = assessments.find(a => a.skill === skillName);
+    const assessment = assessments.find(a => a.skill_name === skillName);
+    const assessmentData = assessment?.assessment_data as any;
     return {
       name: skillName,
-      progress: assessment?.score || 0,
-      badge: assessment?.status === 'completed' ? 'Certified' : null,
-      status: assessment?.status || 'not_assessed',
+      progress: assessmentData?.score || 0,
+      badge: assessmentData?.status === 'completed' ? 'Certified' : null,
+      status: assessmentData?.status || 'not_assessed',
       assessment: assessment,
     };
   };
@@ -336,9 +337,19 @@ const MySkillProfile = () => {
                         )}
 
                         {skillData.status === 'pending' && (
-                          <p className="text-sm text-muted-foreground">
-                            Your assessment request has been submitted. An assessor will contact you soon.
-                          </p>
+                          <div className="space-y-3">
+                            <p className="text-sm text-muted-foreground">
+                              Your assessment request has been submitted. An assessor will contact you soon.
+                            </p>
+                            <Button
+                              size="sm"
+                              onClick={() => navigate(`/take-assessment/${skillData.assessment.id}`)}
+                              className="w-full"
+                            >
+                              <PlayCircle className="mr-2 h-4 w-4" />
+                              Take Assessment
+                            </Button>
+                          </div>
                         )}
 
                         {skillData.status === 'in_progress' && (
@@ -394,7 +405,7 @@ const MySkillProfile = () => {
                         <div className="flex items-center gap-3">
                           {getStatusIcon(assessment.status)}
                           <div>
-                            <p className="font-semibold">{assessment.skill}</p>
+                            <p className="font-semibold">{assessment.skill_name}</p>
                             <p className="text-sm text-muted-foreground">
                               {new Date(assessment.created_at).toLocaleDateString()}
                             </p>

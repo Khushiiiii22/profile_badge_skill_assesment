@@ -45,11 +45,20 @@ const PaymentSuccess = () => {
           return;
         }
 
+        // Get pending assessment data from localStorage
+        const pendingAssessment = localStorage.getItem("pendingAssessment");
+        let assessmentData = null;
+        if (pendingAssessment) {
+          assessmentData = JSON.parse(pendingAssessment);
+        }
+
         // Verify payment with backend
         const { data, error } = await supabase.functions.invoke('verify-payment', {
           body: {
             payment_id: paymentId,
             payment_request_id: paymentRequestId,
+            buyer_email: session.user.email,
+            assessment_data: assessmentData, // Send assessment data!
           },
         });
 
