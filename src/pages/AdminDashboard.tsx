@@ -82,8 +82,7 @@ const AdminDashboard = () => {
       const { data, error } = await supabase
         .from('assessments')
         .select('*')
-        .eq('status', 'completed')
-        .order('created_at', { ascending: false });
+      .eq('status', 'awaiting_approval')        .order('created_at', { ascending: false });
 
       if (error) throw error;
 
@@ -125,8 +124,7 @@ const AdminDashboard = () => {
       // In a real implementation, you'd add an 'approved' boolean field to the assessments table
       const { error } = await supabase
         .from('assessments')
-        .update({ status: 'approved' })
-        .eq('id', assessmentId);
+      .update({ approved: true, status: 'completed', approved_at: new Date().toISOString() })        .eq('id', assessmentId);
 
       if (error) throw error;
 
@@ -183,7 +181,8 @@ const AdminDashboard = () => {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'completed':
-        return <Badge variant="secondary" className="bg-blue-100 text-blue-800"><Clock className="w-3 h-3 mr-1" />Awaiting Approval</Badge>;
+            case 'awaiting_approval':
+              return <Badge variant="secondary" className="bg-blue-100 text-blue-800"><Clock className="w-3 h-3 mr-1" />Awaiting Approval</Badge>;
       case 'approved':
         return <Badge variant="default" className="bg-green-100 text-green-800"><CheckCircle className="w-3 h-3 mr-1" />Approved</Badge>;
       case 'rejected':
@@ -263,8 +262,7 @@ const AdminDashboard = () => {
                           <TableCell>{getStatusBadge(assessment.status)}</TableCell>
                           <TableCell>
                             <div className="flex gap-2">
-                              {assessment.status === 'completed' && (
-                                <>
+                  {assessment.status === 'awaiting_approval' && (                                <>
                                   <Button
                                     size="sm"
                                     variant="default"
