@@ -46,7 +46,7 @@ const Auth = () => {
           const userRole = roleData?.role;
 
           if (userRole === 'admin') {
-            navigate('/admin-dashboard');
+            navigate('/admin');
           } else {
             navigate('/my-skill-profile');
           }
@@ -164,7 +164,7 @@ const Auth = () => {
 
         // Redirect based on role
         if (userRole === 'admin') {
-          navigate('/admin-dashboard');
+          navigate('/admin');
         } else {
           navigate('/my-skill-profile');
         }
