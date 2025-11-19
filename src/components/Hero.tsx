@@ -38,6 +38,12 @@ const Hero = () => {
                   Sign In
                 </Button>
               </Link>
+                        <Link to="/profiles">
+            <Button variant="ghost" size="lg">
+              View Student Profiles
+              <Users className="ml-2 h-5 w-5" />
+            </Button>
+          </Link>
             </div>
             
             <div className="flex flex-wrap gap-8 pt-4">
