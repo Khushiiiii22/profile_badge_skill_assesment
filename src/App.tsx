@@ -55,6 +55,7 @@ const App = () => {
               <Route path="/my-skill-profile" element={<MySkillProfile />} />
               <Route path="/payment-success" element={<PaymentSuccess />} />
               <Route path="/take-assessment/:assessmentId" element={<TakeAssessment />} />
+                        <Route path="/admin" element={<AdminDashboard />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
