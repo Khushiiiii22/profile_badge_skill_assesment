@@ -171,11 +171,11 @@ const Auth = () => {
 
         toast({
           title: "Welcome Back!",
-          description: userRole === 'admin' ? "Redirecting to admin dashboard..." : "Redirecting to your profile...",
+          description: userRole === 'sba_admin' ? "Redirecting to admin dashboard..." : "Redirecting to your profile...",
         });
 
         // Redirect based on role
-        if (userRole === 'admin') {
+        if (userRole === 'sba_admin') {
           navigate('/admin');
         } else {
           navigate('/my-skill-profile');
