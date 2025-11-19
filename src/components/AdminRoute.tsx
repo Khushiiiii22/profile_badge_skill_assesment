@@ -32,10 +32,10 @@ export const AdminRoute = ({ children }: AdminRouteProps) => {
       }
 
       const { data: userRole, error } = await supabase
-        .from('user_roles')
+        .from('profiles')
         .select('role')
-        .eq('user_id', session.user.id)
-        .eq('role', 'admin')
+        .eq('id', session.user.id)
+        .in('role', ['sba_admin', 'school_admin'])
         .single();
 
       if (error || !userRole) {
