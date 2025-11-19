@@ -1,4 +1,23 @@
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/toaster";
+import { Sonner } from "@/components/ui/sonner";
+import { supabase } from "@/integrations/supabase/client";
+import Index from "./pages/Index";
+import GetAssessed from "./pages/GetAssessed";
+import RequestAssessment from "./pages/RequestAssessment";
+import Auth from "./pages/Auth";
+import MySkillProfile from "./pages/MySkillProfile";
 import StudentProfiles from "./pages/StudentProfiles";
+import PaymentSuccess from "./pages/PaymentSuccess";
+import TakeAssessment from "./pages/TakeAssessment";
+import AdminDashboard from "./pages/AdminDashboard";
+import NotFound from "./pages/NotFound";
+import AdminRoute from "./components/AdminRoute";
+
+const queryClient = new QueryClient();
+
 const App = () => {
   console.log("🚀 App component rendering...");
 
@@ -34,15 +53,18 @@ const App = () => {
               <Route path="/request-assessment" element={<RequestAssessment />} />
               <Route path="/auth" element={<Auth />} />
               <Route path="/my-skill-profile" element={<MySkillProfile />} />
-                          <Route path="/profiles" element={<StudentProfiles />} />
+              <Route path="/profiles" element={<StudentProfiles />} />
               <Route path="/payment-success" element={<PaymentSuccess />} />
               <Route path="/take-assessment/:assessmentId" element={<TakeAssessment />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="/admin" element={
-                <AdminRoute>
-                  <AdminDashboard />
-                </AdminRoute>
-              } />
+              <Route
+                path="/admin"
+                element={
+                  <AdminRoute>
+                    <AdminDashboard />
+                  </AdminRoute>
+                }
+              />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
@@ -56,3 +78,5 @@ const App = () => {
     return <div>Error rendering app</div>;
   }
 };
+
+export default App;
