@@ -1,3 +1,4 @@
+import StudentProfiles from "./pages/StudentProfiles";
 const App = () => {
   console.log("🚀 App component rendering...");
 
@@ -33,6 +34,7 @@ const App = () => {
               <Route path="/request-assessment" element={<RequestAssessment />} />
               <Route path="/auth" element={<Auth />} />
               <Route path="/my-skill-profile" element={<MySkillProfile />} />
+                          <Route path="/profiles" element={<StudentProfiles />} />
               <Route path="/payment-success" element={<PaymentSuccess />} />
               <Route path="/take-assessment/:assessmentId" element={<TakeAssessment />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
