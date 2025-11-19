@@ -146,8 +146,7 @@ const TakeAssessment = () => {
       // Update assessment record with score and status - using correct field names from migration
       const updatePayload = {
         skill: assessment.skill,
-        status: 'completed',
-        score: calculatedScore,
+      status: 'awaiting_approval',        score: calculatedScore,
         assessment_date: new Date().toISOString(),
       };
       console.log('Updating assessment with payload:', updatePayload);
