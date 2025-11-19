@@ -14,6 +14,7 @@ import MySkillProfile from "./pages/MySkillProfile";
 import PaymentSuccess from "./pages/PaymentSuccess";
 import TakeAssessment from "./pages/TakeAssessment";
 import AdminDashboard from "./pages/AdminDashboard";
+import { AdminRoute } from "./components/AdminRoute";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -55,12 +56,10 @@ const App = () => {
               <Route path="/my-skill-profile" element={<MySkillProfile />} />
               <Route path="/payment-success" element={<PaymentSuccess />} />
               <Route path="/take-assessment/:assessmentId" element={<TakeAssessment />} />
-                        <Route path="/admin" element={<AdminDashboard />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
+          <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />        </TooltipProvider>
       </QueryClientProvider>
     );
     console.log("✅ JSX structure created successfully");
