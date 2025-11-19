@@ -95,6 +95,18 @@ const Auth = () => {
             email: email.trim(),
           });
 
+                // Assign student role to new user
+        const { error: roleError } = await supabase
+          .from('user_roles')
+          .insert({
+            user_id: data.user.id,
+            role: 'student',
+          });
+
+                if (roleError) {
+          console.error('Role assignment error:', roleError);
+        }
+
         if (profileError) {
           console.error("Profile creation error:", profileError);
         }
