@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CheckCircle, XCircle, Clock, AlertCircle } from "lucide-react";
+import { CheckCircle, XCircle, Clock, AlertCircle, LogOut } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -25,10 +26,9 @@ type Assessment = {
   badge_url?: string;
   created_at?: string;
   updated_at?: string;
-  approved?: boolean; // Add this when the migration adds it
+  approved?: boolean;
 };
 
-// Extended type with profile information
 type AssessmentWithProfile = Assessment & {
   profile_full_name?: string;
   profile_email?: string;
@@ -36,6 +36,7 @@ type AssessmentWithProfile = Assessment & {
 
 const AdminDashboard = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [assessments, setAssessments] = useState<AssessmentWithProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -47,7 +48,6 @@ const AdminDashboard = () => {
   const fetchAssessments = async () => {
     try {
       setLoading(true);
-
       // Check user role first
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -56,9 +56,9 @@ const AdminDashboard = () => {
           description: "Please log in to access the admin dashboard.",
           variant: "destructive",
         });
+        navigate("/auth");
         return;
       }
-
       // Check if user has admin role
       const { data: userRole, error: roleError } = await supabase
         .from('user_roles')
@@ -66,26 +66,22 @@ const AdminDashboard = () => {
         .eq('user_id', session.user.id)
         .eq('role', 'admin')
         .single();
-
       if (roleError || !userRole) {
         toast({
           title: "Access Denied",
           description: "You don't have admin privileges to access this page.",
           variant: "destructive",
         });
+        navigate("/my-skill-profile");
         return;
       }
-
-      // Fetch assessments that are completed but awaiting approval
-      // Note: The current schema doesn't have an 'approved' field yet
-      // This implementation assumes completed assessments need admin approval
+      // Fetch assessments that are awaiting approval
       const { data, error } = await supabase
         .from('assessments')
         .select('*')
-      .eq('status', 'awaiting_approval')        .order('created_at', { ascending: false });
-
+        .eq('status', 'awaiting_approval')
+        .order('created_at', { ascending: false });
       if (error) throw error;
-
       // Fetch profile information separately
       const assessmentsWithProfiles = await Promise.all(
         (data || []).map(async (assessment) => {
@@ -94,7 +90,6 @@ const AdminDashboard = () => {
             .select('full_name, email')
             .eq('id', assessment.user_id)
             .single();
-
           return {
             ...assessment,
             profile_full_name: profile?.full_name || 'Unknown',
@@ -119,21 +114,15 @@ const AdminDashboard = () => {
   const handleApprove = async (assessmentId: string) => {
     try {
       setActionLoading(assessmentId);
-
-      // For now, we'll update the status to 'approved' (this field doesn't exist yet in schema)
-      // In a real implementation, you'd add an 'approved' boolean field to the assessments table
       const { error } = await supabase
         .from('assessments')
-      .update({ approved: true, status: 'completed', approved_at: new Date().toISOString() })        .eq('id', assessmentId);
-
+        .update({ approved: true, status: 'completed', approved_at: new Date().toISOString() })
+        .eq('id', assessmentId);
       if (error) throw error;
-
       toast({
         title: "Assessment Approved",
         description: "The assessment has been successfully approved.",
       });
-
-      // Refresh the list
       await fetchAssessments();
     } catch (error: any) {
       console.error('Error approving assessment:', error);
@@ -150,21 +139,15 @@ const AdminDashboard = () => {
   const handleReject = async (assessmentId: string) => {
     try {
       setActionLoading(assessmentId);
-
-      // Update status to 'rejected'
       const { error } = await supabase
         .from('assessments')
         .update({ status: 'rejected' })
         .eq('id', assessmentId);
-
       if (error) throw error;
-
       toast({
         title: "Assessment Rejected",
         description: "The assessment has been rejected.",
       });
-
-      // Refresh the list
       await fetchAssessments();
     } catch (error: any) {
       console.error('Error rejecting assessment:', error);
@@ -178,11 +161,20 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    toast({
+      title: "Signed Out",
+      description: "You have been successfully signed out.",
+    });
+    navigate("/auth");
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'completed':
-            case 'awaiting_approval':
-              return <Badge variant="secondary" className="bg-blue-100 text-blue-800"><Clock className="w-3 h-3 mr-1" />Awaiting Approval</Badge>;
+      case 'awaiting_approval':
+        return <Badge variant="secondary" className="bg-blue-100 text-blue-800"><Clock className="w-3 h-3 mr-1" />Awaiting Approval</Badge>;
       case 'approved':
         return <Badge variant="default" className="bg-green-100 text-green-800"><CheckCircle className="w-3 h-3 mr-1" />Approved</Badge>;
       case 'rejected':
@@ -207,13 +199,19 @@ const AdminDashboard = () => {
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-7xl mx-auto">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2">Admin Dashboard</h1>
-            <p className="text-muted-foreground">
-              Manage student assessment results and approvals
-            </p>
+          {/* Top bar with title and Sign Out button */}
+          <div className="flex justify-between items-center mb-8">
+            <div>
+              <h1 className="text-3xl font-bold mb-2">Admin Dashboard</h1>
+              <p className="text-muted-foreground">
+                Manage student assessment results and approvals
+              </p>
+            </div>
+            <Button variant="ghost" onClick={handleSignOut}>
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign Out
+            </Button>
           </div>
-
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -262,7 +260,8 @@ const AdminDashboard = () => {
                           <TableCell>{getStatusBadge(assessment.status)}</TableCell>
                           <TableCell>
                             <div className="flex gap-2">
-                  {assessment.status === 'awaiting_approval' && (                                <>
+                              {assessment.status === 'awaiting_approval' && (
+                                <>
                                   <Button
                                     size="sm"
                                     variant="default"

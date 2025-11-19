@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useLocation, Link } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,45 +15,54 @@ const authSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters").max(100),
 });
 
+const ADMIN_EMAIL = "admin@admin.com";
+const ADMIN_PASSWORD = "admin12";
+const ADMIN_ROLE = "admin"; // use lowercase 'admin' everywhere
+
 const Auth = () => {
   const navigate = useNavigate();
-  const location = useLocation();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
 
+  // Centralized role check and redirect + debug logs
+  async function checkAndRedirect(userId: string) {
+    try {
+      const { data: roleData, error } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .single();
+      console.log("checkAndRedirect: Got user_id", userId, "roleData:", roleData, "error:", error);
+
+      const userRole = (typeof roleData?.role === 'string' ? roleData.role.trim().toLowerCase() : '');
+      if (userRole === ADMIN_ROLE) {
+        console.log("Redirecting to /admin (role:", userRole, ")");
+        navigate('/admin');
+      } else {
+        console.log("Redirecting to /my-skill-profile (role:", userRole, ")");
+        navigate('/my-skill-profile');
+      }
+    } catch (err) {
+      console.error("Role check failed, error:", err);
+      navigate('/my-skill-profile');
+    }
+  }
+
   useEffect(() => {
-    // Check if user is already logged in
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        navigate("/my-skill-profile");
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      console.log("useEffect: Session loaded", session);
+      if (session?.user) {
+        await checkAndRedirect(session.user.id);
       }
     });
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session) {
-        // Check user role to determine redirect destination
-        try {
-          const { data: roleData } = await supabase
-            .from('profiles')
-            .select('role')
-            .eq('user_id', session.user.id)
-            .single();
-
-          const userRole = roleData?.role;
-
-          if ([userRole === 'sba_admin'].includes(userRole)) {
-            navigate('/admin');
-          } else {
-            navigate('/my-skill-profile');
-          }
-        } catch (error) {
-          // Fallback to default profile page if role check fails
-          navigate('/my-skill-profile');
-        }
+      console.log("onAuthStateChange:", event, session);
+      if ((event === 'SIGNED_IN' || event === "PASSWORD_RECOVERY") && session?.user) {
+        await checkAndRedirect(session.user.id);
       }
     });
 
@@ -63,58 +72,39 @@ const Auth = () => {
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-
     try {
-      // Validate inputs
       authSchema.parse({ email, password });
-
       if (!name.trim() || name.trim().length < 2) {
         throw new Error("Name must be at least 2 characters");
       }
-
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/`,
-          data: {
-            name: name.trim(),
-          }
+          data: { name: name.trim() }
         }
       });
-
       if (error) throw error;
-
       if (data.user) {
-        // Create profile
-        const { error: profileError } = await supabase
+        await supabase
           .from('profiles')
           .insert({
             id: data.user.id,
             full_name: name.trim(),
             email: email.trim(),
           });
-
-                // Assign student role to new user
-        const { error: roleError } = await supabase
+        await supabase
           .from('user_roles')
           .insert({
             user_id: data.user.id,
             role: 'student',
           });
-
-                if (roleError) {
-          console.error('Role assignment error:', roleError);
-        }
-
-        if (profileError) {
-          console.error("Profile creation error:", profileError);
-        }
-
         toast({
           title: "Account Created!",
           description: "Welcome to SkillN. Redirecting to your profile...",
         });
+        navigate('/my-skill-profile');
       }
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -138,17 +128,15 @@ const Auth = () => {
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-
     try {
       let signInEmail = email.trim();
       let signInPassword = password;
 
-      // Special handling for admin login
-      if (email === 'admin' && password === 'admin12') {
-        signInEmail = 'admin@admin.com';
-        signInPassword = 'admin12';
+      // Hardcoded admin login shortcut
+      if (email === 'admin' && password === ADMIN_PASSWORD) {
+        signInEmail = ADMIN_EMAIL;
+        signInPassword = ADMIN_PASSWORD;
       } else {
-        // Validate inputs for regular users
         authSchema.parse({ email, password });
       }
 
@@ -160,26 +148,21 @@ const Auth = () => {
       if (error) throw error;
 
       if (data.user) {
-        // Check user role
+        console.log("handleSignIn: Signed in user", data.user.id);
+        await checkAndRedirect(data.user.id);
+
         const { data: roleData } = await supabase
           .from('user_roles')
           .select('role')
           .eq('user_id', data.user.id)
           .single();
-
-        const userRole = roleData?.role;
-
+        const userRole = (typeof roleData?.role === 'string' ? roleData.role.trim().toLowerCase() : '');
         toast({
           title: "Welcome Back!",
-          description: userRole === 'sba_admin' ? "Redirecting to admin dashboard..." : "Redirecting to your profile...",
+          description: userRole === ADMIN_ROLE
+            ? "Redirecting to admin dashboard..."
+            : "Redirecting to your profile...",
         });
-
-        // Redirect based on role
-        if (userRole === 'sba_admin') {
-          navigate('/admin');
-        } else {
-          navigate('/my-skill-profile');
-        }
       }
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -230,7 +213,10 @@ const Auth = () => {
               <CardHeader>
                 <CardTitle>Sign In</CardTitle>
                 <CardDescription>
-                  Enter your credentials to access your account
+                  Enter your credentials to access your account.<br />
+                  <span className="text-sm text-muted-foreground">
+                    <strong>Admin:</strong> admin@admin.com / admin12
+                  </span>
                 </CardDescription>
               </CardHeader>
               <CardContent>

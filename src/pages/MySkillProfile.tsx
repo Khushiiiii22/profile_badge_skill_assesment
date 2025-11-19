@@ -36,6 +36,7 @@ const MySkillProfile = () => {
   const { toast } = useToast();
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
+  const [userRole, setUserRole] = useState<string>("student");
   const [assessments, setAssessments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -51,6 +52,13 @@ const MySkillProfile = () => {
   useEffect(() => {
     checkUser();
   }, []);
+
+  useEffect(() => {
+    // Optional: redirect admins to the admin dashboard
+    // if (!loading && userRole === "admin") {
+    //   navigate("/admin");
+    // }
+  }, [userRole, loading, navigate]);
 
   const checkUser = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -68,8 +76,19 @@ const MySkillProfile = () => {
       .select('*')
       .eq('id', session.user.id)
       .single();
-
     setProfile(profileData);
+
+    // Fetch user role
+    const { data: roleData } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', session.user.id)
+      .single();
+    if (roleData?.role) {
+      setUserRole(typeof roleData.role === 'string' ? roleData.role.trim().toLowerCase() : "student");
+    } else {
+      setUserRole("student");
+    }
 
     // Fetch assessments
     const { data: assessmentData, error } = await supabase
@@ -86,8 +105,6 @@ const MySkillProfile = () => {
         variant: "destructive",
       });
     } else {
-      console.log('Fetched assessments from DB:', assessmentData);
-      console.log('Assessment columns:', assessmentData ? assessmentData.map(a => ({ id: a.id, skill: (a as any).skill, skill_name: a.skill_name, status: (a as any).status })) : 'No assessments');
       setAssessments(assessmentData || []);
     }
 
@@ -105,12 +122,11 @@ const MySkillProfile = () => {
 
   const getSkillData = (skillName: string) => {
     const assessment = assessments.find(a => a.skill === skillName || a.skill_name === skillName);
-    console.log('Finding approved assessment for skill:', skillName, 'found:', assessment);
     return {
       name: skillName,
       progress: assessment?.score || 0,
       badge: assessment?.status === 'completed' && assessment?.approved ? 'Certified' : null,
-      status: assessment ? 'completed' : 'not_assessed',
+      status: assessment ? assessment.status : 'not_assessed',
       assessment: assessment,
     };
   };
@@ -211,38 +227,39 @@ const MySkillProfile = () => {
                     {profile?.name ? getInitials(profile.name) : "U"}
                   </AvatarFallback>
                 </Avatar>
-
                 <div className="flex-1 text-center md:text-left">
-                  <h1 className="text-3xl font-bold mb-2">{profile?.name || "Student"}</h1>
+                  <h1 className="text-3xl font-bold mb-2">{profile?.name || (userRole === "admin" ? "Admin" : "Student")}</h1>
                   <p className="text-muted-foreground">{user?.email}</p>
                   <div className="flex flex-wrap gap-2 mt-3 justify-center md:justify-start">
-                    <Badge variant="secondary">Student</Badge>
+                    <Badge variant="secondary">{userRole === "admin" ? "Admin" : "Student"}</Badge>
                     {profile?.age && <Badge variant="outline">Age: {profile.age}</Badge>}
-                    {completedAssessments > 0 && (
+                    {userRole === "student" && completedAssessments > 0 && (
                       <Badge className="bg-green-500">
                         {completedAssessments} Certified
                       </Badge>
                     )}
-                    {pendingAssessments > 0 && (
+                    {userRole === "student" && pendingAssessments > 0 && (
                       <Badge variant="secondary">
                         {pendingAssessments} Pending
                       </Badge>
                     )}
                   </div>
                 </div>
-
-                <Link to="/get-assessed">
-                  <Button variant="hero">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Take Assessment
-                  </Button>
-                </Link>
+                {/* Only show Take Assessment for students */}
+                {userRole === "student" && (
+                  <Link to="/get-assessed">
+                    <Button variant="hero">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Take Assessment
+                    </Button>
+                  </Link>
+                )}
               </div>
             </CardContent>
           </Card>
 
           {/* Stats Overview */}
-          {assessments.length > 0 && (
+          {userRole === "student" && assessments.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card>
                 <CardContent className="pt-6">
@@ -274,116 +291,112 @@ const MySkillProfile = () => {
             </div>
           )}
 
-          {/* Skills Overview */}
-          <div>
-            <h2 className="text-2xl font-bold mb-4">My Skills</h2>
-            <div className="grid md:grid-cols-2 gap-4">
-              {allSkills.map((skillName, index) => {
-                const skillData = getSkillData(skillName);
-                return (
-                  <Card key={index} className="hover:shadow-md transition-shadow">
-                    <CardHeader>
-                      <CardTitle className="flex items-center justify-between text-lg">
-                        <span className="flex items-center gap-2">
-                          {skillData.name}
-                          {getStatusIcon(skillData.status)}
-                        </span>
-                        {skillData.badge && (
-                          <Badge className="bg-green-500">{skillData.badge}</Badge>
-                        )}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Status</span>
-                          <Badge variant={getStatusVariant(skillData.status)}>
-                            {getStatusText(skillData.status)}
-                          </Badge>
-                        </div>
-
-                        {skillData.status === 'completed' && (
-                          <>
-                            <div className="space-y-2">
-                              <div className="flex justify-between text-sm text-muted-foreground">
-                                <span>Score</span>
-                                <span className="font-semibold text-foreground">
-                                  {skillData.progress}%
-                                </span>
-                              </div>
-                              <Progress value={skillData.progress} className="h-2" />
-                            </div>
-
-                            {skillData.assessment?.feedback && (
-                              <div className="mt-3 p-3 bg-muted rounded-md">
-                                <p className="text-sm text-muted-foreground">
-                                  <span className="font-semibold">Feedback:</span> {skillData.assessment.feedback}
-                                </p>
-                              </div>
-                            )}
-
-                            <div className="flex gap-2 mt-3">
-                              {skillData.assessment?.certificate_url && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="flex-1"
-                                  onClick={() => window.open(skillData.assessment?.certificate_url, '_blank')}
-                                >
-                                  View Certificate
-                                </Button>
-                              )}
-                              {skillData.assessment?.badge_url && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="flex-1"
-                                  onClick={() => window.open(skillData.assessment?.badge_url, '_blank')}
-                                >
-                                  View Badge
-                                </Button>
-                              )}
-                            </div>
-                          </>
-                        )}
-
-                        {skillData.status === 'pending' && (
-                          <div className="space-y-3">
-                            <p className="text-sm text-muted-foreground">
-                              Your assessment request has been submitted. An assessor will contact you soon.
-                            </p>
-                            <Button
-                              size="sm"
-                              onClick={() => navigate(`/take-assessment/${skillData.assessment.id}`)}
-                              className="w-full"
-                            >
-                              <PlayCircle className="mr-2 h-4 w-4" />
-                              Take Assessment
-                            </Button>
+          {/* Skills Overview - hide for admin */}
+          {userRole === "student" && (
+            <div>
+              <h2 className="text-2xl font-bold mb-4">My Skills</h2>
+              <div className="grid md:grid-cols-2 gap-4">
+                {allSkills.map((skillName, index) => {
+                  const skillData = getSkillData(skillName);
+                  return (
+                    <Card key={index} className="hover:shadow-md transition-shadow">
+                      <CardHeader>
+                        <CardTitle className="flex items-center justify-between text-lg">
+                          <span className="flex items-center gap-2">
+                            {skillData.name}
+                            {getStatusIcon(skillData.status)}
+                          </span>
+                          {skillData.badge && (
+                            <Badge className="bg-green-500">{skillData.badge}</Badge>
+                          )}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Status</span>
+                            <Badge variant={getStatusVariant(skillData.status)}>
+                              {getStatusText(skillData.status)}
+                            </Badge>
                           </div>
-                        )}
-
-                        {skillData.status === 'in_progress' && (
-                          <p className="text-sm text-muted-foreground">
-                            Your assessment is currently in progress.
-                          </p>
-                        )}
-
-                        {skillData.status === 'not_assessed' && (
-                          <p className="text-sm text-muted-foreground">
-                            Not assessed yet. Click below to get started.
-                          </p>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
+                          {skillData.status === 'completed' && (
+                            <>
+                              <div className="space-y-2">
+                                <div className="flex justify-between text-sm text-muted-foreground">
+                                  <span>Score</span>
+                                  <span className="font-semibold text-foreground">
+                                    {skillData.progress}%
+                                  </span>
+                                </div>
+                                <Progress value={skillData.progress} className="h-2" />
+                              </div>
+                              {skillData.assessment?.feedback && (
+                                <div className="mt-3 p-3 bg-muted rounded-md">
+                                  <p className="text-sm text-muted-foreground">
+                                    <span className="font-semibold">Feedback:</span> {skillData.assessment.feedback}
+                                  </p>
+                                </div>
+                              )}
+                              <div className="flex gap-2 mt-3">
+                                {skillData.assessment?.certificate_url && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="flex-1"
+                                    onClick={() => window.open(skillData.assessment?.certificate_url, '_blank')}
+                                  >
+                                    View Certificate
+                                  </Button>
+                                )}
+                                {skillData.assessment?.badge_url && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="flex-1"
+                                    onClick={() => window.open(skillData.assessment?.badge_url, '_blank')}
+                                  >
+                                    View Badge
+                                  </Button>
+                                )}
+                              </div>
+                            </>
+                          )}
+                          {skillData.status === 'pending' && (
+                            <div className="space-y-3">
+                              <p className="text-sm text-muted-foreground">
+                                Your assessment request has been submitted. An assessor will contact you soon.
+                              </p>
+                              <Button
+                                size="sm"
+                                onClick={() => navigate(`/take-assessment/${skillData.assessment.id}`)}
+                                className="w-full"
+                              >
+                                <PlayCircle className="mr-2 h-4 w-4" />
+                                Take Assessment
+                              </Button>
+                            </div>
+                          )}
+                          {skillData.status === 'in_progress' && (
+                            <p className="text-sm text-muted-foreground">
+                              Your assessment is currently in progress.
+                            </p>
+                          )}
+                          {skillData.status === 'not_assessed' && (
+                            <p className="text-sm text-muted-foreground">
+                              Not assessed yet. Click below to get started.
+                            </p>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Call to Action */}
-          {assessments.length === 0 && (
+          {/* Call to Action - student only */}
+          {userRole === "student" && assessments.length === 0 && (
             <Card className="bg-gradient-to-r from-primary/10 to-secondary/10 border-2 border-primary/20">
               <CardContent className="p-8 text-center">
                 <Award className="h-12 w-12 text-primary mx-auto mb-4" />
@@ -401,8 +414,8 @@ const MySkillProfile = () => {
             </Card>
           )}
 
-          {/* Recent Assessments */}
-          {assessments.length > 0 && (
+          {/* Recent Assessments - student only */}
+          {userRole === "student" && assessments.length > 0 && (
             <div>
               <h2 className="text-2xl font-bold mb-4">Recent Activity</h2>
               <Card>
@@ -416,7 +429,7 @@ const MySkillProfile = () => {
                         <div className="flex items-center gap-3">
                           {getStatusIcon(assessment.status)}
                           <div>
-                            <p className="font-semibold">{assessment.skill_name}</p>
+                            <p className="font-semibold">{assessment.skill_name || assessment.skill}</p>
                             <p className="text-sm text-muted-foreground">
                               {new Date(assessment.created_at).toLocaleDateString()}
                             </p>
@@ -429,6 +442,7 @@ const MySkillProfile = () => {
               </Card>
             </div>
           )}
+
         </div>
       </div>
     </div>
