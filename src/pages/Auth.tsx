@@ -45,7 +45,7 @@ const Auth = () => {
 
           const userRole = roleData?.role;
 
-          if ([userRole === 'admin'].includes(userRole)) {
+          if ([userRole === 'sba_admin'].includes(userRole)) {
             navigate('/admin');
           } else {
             navigate('/my-skill-profile');
@@ -145,7 +145,7 @@ const Auth = () => {
 
       // Special handling for admin login
       if (email === 'admin' && password === 'admin12') {
-        signInEmail = 'admin@gmail.com';
+        signInEmail = 'admin@admin.com';
         signInPassword = 'admin12';
       } else {
         // Validate inputs for regular users
@@ -171,11 +171,11 @@ const Auth = () => {
 
         toast({
           title: "Welcome Back!",
-          description: userRole === 'admin' ? "Redirecting to admin dashboard..." : "Redirecting to your profile...",
+          description: userRole === 'sba_admin' ? "Redirecting to admin dashboard..." : "Redirecting to your profile...",
         });
 
         // Redirect based on role
-        if (userRole === 'admin') {
+        if (userRole === 'sba_admin') {
           navigate('/admin');
         } else {
           navigate('/my-skill-profile');
