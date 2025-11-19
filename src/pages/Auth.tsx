@@ -144,9 +144,9 @@ const Auth = () => {
       let signInPassword = password;
 
       // Special handling for admin login
-      if (email === 'admin' && password === '123') {
-        signInEmail = 'admin@admin.com';
-        signInPassword = '123';
+      if (email === 'admin' && password === 'admin12') {
+        signInEmail = 'admin@gmail.com';
+        signInPassword = 'admin12';
       } else {
         // Validate inputs for regular users
         authSchema.parse({ email, password });
