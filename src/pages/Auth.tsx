@@ -38,14 +38,14 @@ const Auth = () => {
         // Check user role to determine redirect destination
         try {
           const { data: roleData } = await supabase
-            .from('user_roles')
+            .from('profiles')
             .select('role')
             .eq('user_id', session.user.id)
             .single();
 
           const userRole = roleData?.role;
 
-          if (userRole === 'admin') {
+          if ([userRole === 'sba_admin'].includes(userRole)) {
             navigate('/admin');
           } else {
             navigate('/my-skill-profile');
