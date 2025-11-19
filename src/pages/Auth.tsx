@@ -45,7 +45,7 @@ const Auth = () => {
 
           const userRole = roleData?.role;
 
-          if ([userRole === 'sba_admin'].includes(userRole)) {
+          if ([userRole === 'admin'].includes(userRole)) {
             navigate('/admin');
           } else {
             navigate('/my-skill-profile');
@@ -171,11 +171,11 @@ const Auth = () => {
 
         toast({
           title: "Welcome Back!",
-          description: userRole === 'sba_admin' ? "Redirecting to admin dashboard..." : "Redirecting to your profile...",
+          description: userRole === 'admin' ? "Redirecting to admin dashboard..." : "Redirecting to your profile...",
         });
 
         // Redirect based on role
-        if (userRole === 'sba_admin') {
+        if (userRole === 'admin') {
           navigate('/admin');
         } else {
           navigate('/my-skill-profile');
