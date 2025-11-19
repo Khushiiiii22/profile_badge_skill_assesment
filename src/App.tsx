@@ -1,24 +1,3 @@
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-
-// DIRECT IMPORTS -- NO lazy/Suspense!
-import Index from "./pages/Index";
-import GetAssessed from "./pages/GetAssessed";
-import RequestAssessment from "./pages/RequestAssessment";
-import Auth from "./pages/Auth";
-import MySkillProfile from "./pages/MySkillProfile";
-import PaymentSuccess from "./pages/PaymentSuccess";
-import TakeAssessment from "./pages/TakeAssessment";
-import AdminDashboard from "./pages/AdminDashboard";
-import { AdminRoute } from "./components/AdminRoute";
-import NotFound from "./pages/NotFound";
-
-const queryClient = new QueryClient();
-
 const App = () => {
   console.log("🚀 App component rendering...");
 
@@ -57,9 +36,15 @@ const App = () => {
               <Route path="/payment-success" element={<PaymentSuccess />} />
               <Route path="/take-assessment/:assessmentId" element={<TakeAssessment />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="/admin" element={
+                <AdminRoute>
+                  <AdminDashboard />
+                </AdminRoute>
+              } />
               <Route path="*" element={<NotFound />} />
             </Routes>
-          <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />        </TooltipProvider>
+          </BrowserRouter>
+        </TooltipProvider>
       </QueryClientProvider>
     );
     console.log("✅ JSX structure created successfully");
@@ -69,5 +54,3 @@ const App = () => {
     return <div>Error rendering app</div>;
   }
 };
-
-export default App;
