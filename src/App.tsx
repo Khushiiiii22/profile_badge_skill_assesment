@@ -13,6 +13,7 @@ import Auth from "./pages/Auth";
 import MySkillProfile from "./pages/MySkillProfile";
 import PaymentSuccess from "./pages/PaymentSuccess";
 import TakeAssessment from "./pages/TakeAssessment";
+import AdminDashboard from "./pages/AdminDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();

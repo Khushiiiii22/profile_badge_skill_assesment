@@ -15,7 +15,7 @@ interface Assessment {
   skill: string;
   pin_code: string;
   school_name: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  status: 'pending' | 'in_progress' | 'awaiting_approval' | 'completed' | 'cancelled';
   payment_id: string | null;
   payment_request_id: string | null;
   assessor_id: string | null;
@@ -26,6 +26,9 @@ interface Assessment {
   badge_url: string | null;
   created_at: string;
   updated_at: string;
+  approved: boolean;
+  approved_by?: string;
+  approved_at?: string;
 }
 
 const MySkillProfile = () => {
@@ -102,12 +105,12 @@ const MySkillProfile = () => {
 
   const getSkillData = (skillName: string) => {
     const assessment = assessments.find(a => a.skill === skillName || a.skill_name === skillName);
-    console.log('Finding assessment for skill:', skillName, 'found:', assessment);
+    console.log('Finding approved assessment for skill:', skillName, 'found:', assessment);
     return {
       name: skillName,
       progress: assessment?.score || 0,
-      badge: assessment?.status === 'completed' ? 'Certified' : null,
-      status: assessment?.status || 'not_assessed',
+      badge: assessment?.status === 'completed' && assessment?.approved ? 'Certified' : null,
+      status: assessment ? 'completed' : 'not_assessed',
       assessment: assessment,
     };
   };
@@ -116,6 +119,8 @@ const MySkillProfile = () => {
     switch (status) {
       case 'completed':
         return <CheckCircle className="h-5 w-5 text-green-500" />;
+      case 'awaiting_approval':
+        return <Clock className="h-5 w-5 text-yellow-500" />;
       case 'pending':
         return <Clock className="h-5 w-5 text-yellow-500" />;
       case 'in_progress':
@@ -130,7 +135,9 @@ const MySkillProfile = () => {
   const getStatusText = (status: string) => {
     switch (status) {
       case 'completed':
-        return 'Completed';
+        return 'Certified';
+      case 'awaiting_approval':
+        return 'Awaiting Approval';
       case 'pending':
         return 'Pending Assessment';
       case 'in_progress':
@@ -146,6 +153,8 @@ const MySkillProfile = () => {
     switch (status) {
       case 'completed':
         return 'default';
+      case 'awaiting_approval':
+        return 'secondary';
       case 'pending':
         return 'secondary';
       case 'in_progress':
@@ -175,8 +184,8 @@ const MySkillProfile = () => {
       .slice(0, 2);
   };
 
-  const completedAssessments = assessments.filter(a => a.status === 'completed').length;
-  const pendingAssessments = assessments.filter(a => a.status === 'pending').length;
+  const completedAssessments = assessments.filter(a => a.status === 'completed' && a.approved).length;
+  const pendingAssessments = assessments.filter(a => a.status === 'pending' || (a.status === 'awaiting_approval' && !a.approved)).length;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">

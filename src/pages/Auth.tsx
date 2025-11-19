@@ -33,9 +33,27 @@ const Auth = () => {
     });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session) {
-        navigate("/my-skill-profile");
+        // Check user role to determine redirect destination
+        try {
+          const { data: roleData } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', session.user.id)
+            .single();
+
+          const userRole = roleData?.role;
+
+          if (userRole === 'admin') {
+            navigate('/admin-dashboard');
+          } else {
+            navigate('/my-skill-profile');
+          }
+        } catch (error) {
+          // Fallback to default profile page if role check fails
+          navigate('/my-skill-profile');
+        }
       }
     });
 
@@ -73,9 +91,8 @@ const Auth = () => {
           .from('profiles')
           .insert({
             id: data.user.id,
-            name: name.trim(),
+            full_name: name.trim(),
             email: email.trim(),
-            role: 'student',
           });
 
         if (profileError) {
@@ -111,20 +128,47 @@ const Auth = () => {
     setLoading(true);
 
     try {
-      // Validate inputs
-      authSchema.parse({ email, password });
+      let signInEmail = email.trim();
+      let signInPassword = password;
 
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
+      // Special handling for admin login
+      if (email === 'admin' && password === '123') {
+        signInEmail = 'admin@admin.com';
+        signInPassword = '123';
+      } else {
+        // Validate inputs for regular users
+        authSchema.parse({ email, password });
+      }
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: signInEmail,
+        password: signInPassword,
       });
 
       if (error) throw error;
 
-      toast({
-        title: "Welcome Back!",
-        description: "Redirecting to your profile...",
-      });
+      if (data.user) {
+        // Check user role
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', data.user.id)
+          .single();
+
+        const userRole = roleData?.role;
+
+        toast({
+          title: "Welcome Back!",
+          description: userRole === 'admin' ? "Redirecting to admin dashboard..." : "Redirecting to your profile...",
+        });
+
+        // Redirect based on role
+        if (userRole === 'admin') {
+          navigate('/admin-dashboard');
+        } else {
+          navigate('/my-skill-profile');
+        }
+      }
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         toast({
