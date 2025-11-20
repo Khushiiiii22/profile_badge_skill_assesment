@@ -13,8 +13,10 @@ import StudentProfiles from "./pages/StudentProfiles";
 import PaymentSuccess from "./pages/PaymentSuccess";
 import TakeAssessment from "./pages/TakeAssessment";
 import AdminDashboard from "./pages/AdminDashboard";
+import AssessorDashboard from "./pages/AssessorDashboard";
 import NotFound from "./pages/NotFound";
 import { AdminRoute } from "./components/AdminRoute";
+import { AssessorRoute } from "./components/AssessorRoute";
 
 const queryClient = new QueryClient();
 
@@ -63,6 +65,14 @@ const App = () => {
                   <AdminRoute>
                     <AdminDashboard />
                   </AdminRoute>
+                }
+              />
+              <Route
+                path="/assessor-dashboard"
+                element={
+                  <AssessorRoute>
+                    <AssessorDashboard />
+                  </AssessorRoute>
                 }
               />
               <Route path="*" element={<NotFound />} />

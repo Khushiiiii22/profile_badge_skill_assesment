@@ -5,9 +5,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Award, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { getHighestRole } from '@/lib/auth';
 import { z } from "zod";
 
 const authSchema = z.object({
@@ -26,23 +28,50 @@ const Auth = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [role, setRole] = useState<string>("student");
+  const [viewAs, setViewAs] = useState<'assigned'|'student'|'assessor'>('assigned');
 
   // Centralized role check and redirect + debug logs
   async function checkAndRedirect(userId: string) {
     try {
-      const { data: roleData, error } = await supabase
+      console.log("🔍 Querying user_roles for user_id:", userId);
+      const { data: rolesData, error } = await supabase
         .from('user_roles')
         .select('role')
-        .eq('user_id', userId)
-        .single();
-      console.log("checkAndRedirect: Got user_id", userId, "roleData:", roleData, "error:", error);
+        .eq('user_id', userId);
 
-      const userRole = (typeof roleData?.role === 'string' ? roleData.role.trim().toLowerCase() : '');
-      if (userRole === ADMIN_ROLE) {
-        console.log("Redirecting to /admin (role:", userRole, ")");
+      if (error) {
+        console.error('Role query error:', error);
+        navigate('/my-skill-profile');
+        return;
+      }
+
+      const resolvedRole = await getHighestRole(userId);
+      console.log('checkAndRedirect: resolvedRole for user', userId, resolvedRole);
+
+      // Honor stored desired role (e.g., user selected 'assessor' on sign-in) if allowed
+      let desiredRole: string | null = null;
+      try { desiredRole = sessionStorage.getItem('auth:desiredRole'); } catch (e) { desiredRole = null; }
+      if (desiredRole) {
+        // validate desiredRole
+        if (desiredRole === 'assessor' && (resolvedRole === 'assessor' || resolvedRole === ADMIN_ROLE)) {
+          navigate('/assessor-dashboard');
+          try { sessionStorage.removeItem('auth:desiredRole'); } catch (e) {}
+          return;
+        }
+        if (desiredRole === 'student') {
+          navigate('/my-skill-profile');
+          try { sessionStorage.removeItem('auth:desiredRole'); } catch (e) {}
+          return;
+        }
+        // if desiredRole is 'assigned' or invalid, fall through to assigned behavior
+      }
+
+      if (resolvedRole === ADMIN_ROLE) {
         navigate('/admin');
+      } else if (resolvedRole === 'assessor') {
+        navigate('/assessor-dashboard');
       } else {
-        console.log("Redirecting to /my-skill-profile (role:", userRole, ")");
         navigate('/my-skill-profile');
       }
     } catch (err) {
@@ -93,13 +122,22 @@ const Auth = () => {
             id: data.user.id,
             full_name: name.trim(),
             email: email.trim(),
+            assessment_access: role === 'student',
           });
         await supabase
           .from('user_roles')
           .insert({
             user_id: data.user.id,
-            role: 'student',
+            role: role,
           });
+        if (role === 'assessor') {
+          await supabase
+            .from('assessor_requests')
+            .insert({
+              user_id: data.user.id,
+              status: 'pending',
+            });
+        }
         toast({
           title: "Account Created!",
           description: "Welcome to SkillN. Redirecting to your profile...",
@@ -129,7 +167,7 @@ const Auth = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      let signInEmail = email.trim();
+  let signInEmail = email.trim();
       let signInPassword = password;
 
       // Hardcoded admin login shortcut
@@ -140,7 +178,10 @@ const Auth = () => {
         authSchema.parse({ email, password });
       }
 
-      const { data, error } = await supabase.auth.signInWithPassword({
+  // Persist desired view so auth state handler can honor it if fired
+  try { sessionStorage.setItem('auth:desiredRole', viewAs); } catch (e) { /* ignore */ }
+
+  const { data, error } = await supabase.auth.signInWithPassword({
         email: signInEmail,
         password: signInPassword,
       });
@@ -149,20 +190,34 @@ const Auth = () => {
 
       if (data.user) {
         console.log("handleSignIn: Signed in user", data.user.id);
-        await checkAndRedirect(data.user.id);
+  // Decide which role to use for redirect
+  const assignedRole = await getHighestRole(data.user.id);
+        let desiredRole = assignedRole;
 
-        const { data: roleData } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', data.user.id)
-          .single();
-        const userRole = (typeof roleData?.role === 'string' ? roleData.role.trim().toLowerCase() : '');
-        toast({
-          title: "Welcome Back!",
-          description: userRole === ADMIN_ROLE
-            ? "Redirecting to admin dashboard..."
-            : "Redirecting to your profile...",
-        });
+        if (viewAs === 'assessor') {
+          if (assignedRole !== 'assessor' && assignedRole !== 'admin') {
+            toast({ title: 'Access Denied', description: 'You do not have assessor access. Redirecting to your assigned role.', variant: 'destructive' });
+            desiredRole = assignedRole;
+          } else {
+            desiredRole = 'assessor';
+          }
+        } else if (viewAs === 'student') {
+          desiredRole = 'student';
+        }
+
+  // Redirect according to desiredRole
+        if (desiredRole === ADMIN_ROLE) {
+          navigate('/admin');
+        } else if (desiredRole === 'assessor') {
+          navigate('/assessor-dashboard');
+        } else {
+          navigate('/my-skill-profile');
+        }
+
+  toast({ title: 'Welcome Back!', description: desiredRole === ADMIN_ROLE ? 'Redirecting to admin dashboard...' : 'Redirecting to your profile...' });
+
+  // Clear desired role flag
+  try { sessionStorage.removeItem('auth:desiredRole'); } catch (e) { /* ignore */ }
       }
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -214,9 +269,7 @@ const Auth = () => {
                 <CardTitle>Sign In</CardTitle>
                 <CardDescription>
                   Enter your credentials to access your account.<br />
-                  <span className="text-sm text-muted-foreground">
-                    <strong>Admin:</strong> admin@admin.com / admin12
-                  </span>
+                  <span className="text-sm text-muted-foreground">Please sign in to access your account.</span>
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -244,6 +297,25 @@ const Auth = () => {
                       required
                       maxLength={100}
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Open as</Label>
+                    <RadioGroup value={viewAs} onValueChange={(v) => setViewAs(v as any)}>
+                      <div className="flex items-center space-x-4">
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="assigned" id="assigned" />
+                          <Label htmlFor="assigned">Use assigned role</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="student" id="signin-student" />
+                          <Label htmlFor="signin-student">Student</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="assessor" id="signin-assessor" />
+                          <Label htmlFor="signin-assessor">Assessor</Label>
+                        </div>
+                      </div>
+                    </RadioGroup>
                   </div>
                   <Button type="submit" variant="default" className="w-full" disabled={loading}>
                     {loading ? "Signing In..." : "Sign In"}
@@ -298,6 +370,19 @@ const Auth = () => {
                       required
                       maxLength={100}
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Account Type</Label>
+                    <RadioGroup value={role} onValueChange={setRole}>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="student" id="student" />
+                        <Label htmlFor="student">Student</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="assessor" id="assessor" />
+                        <Label htmlFor="assessor">Assessor</Label>
+                      </div>
+                    </RadioGroup>
                   </div>
                   <Button type="submit" variant="default" className="w-full" disabled={loading}>
                     {loading ? "Creating Account..." : "Sign Up"}
