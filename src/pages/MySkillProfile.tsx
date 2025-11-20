@@ -104,6 +104,7 @@ const MySkillProfile = () => {
         description: "Failed to load your assessments.",
         variant: "destructive",
       });
+      setAssessments([]); // Show dashboard even if query fails
     } else {
       setAssessments(assessmentData || []);
     }
@@ -192,7 +193,7 @@ const MySkillProfile = () => {
   }
 
   const getInitials = (name: string) => {
-    return name
+    return (name || "")
       .split(" ")
       .map((n) => n[0])
       .join("")
@@ -259,7 +260,7 @@ const MySkillProfile = () => {
           </Card>
 
           {/* Stats Overview */}
-          {userRole === "student" && assessments.length > 0 && (
+          {userRole === "student" && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card>
                 <CardContent className="pt-6">
@@ -291,7 +292,7 @@ const MySkillProfile = () => {
             </div>
           )}
 
-          {/* Skills Overview - hide for admin */}
+          {/* Skills Overview - always shown for students */}
           {userRole === "student" && (
             <div>
               <h2 className="text-2xl font-bold mb-4">My Skills</h2>
@@ -395,7 +396,7 @@ const MySkillProfile = () => {
             </div>
           )}
 
-          {/* Call to Action - student only */}
+          {/* Call to Action - student only, shown when no assessments */}
           {userRole === "student" && assessments.length === 0 && (
             <Card className="bg-gradient-to-r from-primary/10 to-secondary/10 border-2 border-primary/20">
               <CardContent className="p-8 text-center">
@@ -442,7 +443,6 @@ const MySkillProfile = () => {
               </Card>
             </div>
           )}
-
         </div>
       </div>
     </div>
