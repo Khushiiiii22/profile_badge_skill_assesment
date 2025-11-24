@@ -32,9 +32,9 @@ export const AssessorRoute = ({ children }: AssessorRouteProps) => {
       }
 
       const { data: rolesData, error } = await supabase
-        .from('user_roles')
+        .from('profiles')
         .select('role')
-        .eq('user_id', session.user.id);
+        .eq('id', session.user.id);
 
       if (error) {
         toast({
