@@ -98,27 +98,22 @@ const AssessorDashboard = () => {
       // Fetch all assessments with their profiles for assessor view
       const { data, error } = await supabase
         .from('assessments')
-        .select('*')
+        .select(`
+          *,
+          profiles:user_id (
+            full_name,
+            email
+          )
+        `)
         .order('created_at', { ascending: false });
-
       if (error) throw error;
 
-      // Fetch profile information separately
-      const assessmentsWithProfiles = await Promise.all(
-        (data || []).map(async (assessment) => {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('full_name, email')
-            .eq('id', assessment.user_id)
-            .single();
-          return {
-            ...assessment,
-            profile_full_name: profile?.full_name || 'Unknown',
-            profile_email: profile?.email || '',
-          };
-        })
-      );
-
+            // Transform the data to match expected format
+      const assessmentsWithProfiles = (data || []).map(assessment => ({
+        ...assessment,
+        profile_full_name: assessment.profiles?.full_name || 'Unknown',
+        profile_email: assessment.profiles?.email || '',
+      }));
       setAllAssessments(assessmentsWithProfiles);
       // Filter pending assessments for the main view
       const pendingAssessments = assessmentsWithProfiles.filter(
