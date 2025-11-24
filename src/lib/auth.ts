@@ -5,7 +5,7 @@ export type Role = 'admin' | 'assessor' | 'student';
 export async function getHighestRole(userId: string): Promise<Role> {
   try {
     const [{ data: rolesData }, { data: profileData }] = await Promise.all([
-      supabase.from('user_roles').select('role').eq('user_id', userId),
+      supabase.from('profiles').select('role').eq('id', userId),
       supabase.from('profiles').select('assessor_assigned_at').eq('id', userId).single(),
     ]);
 
@@ -13,7 +13,7 @@ export async function getHighestRole(userId: string): Promise<Role> {
     if (roles.includes('admin')) return 'admin';
     if (roles.includes('assessor')) return 'assessor';
 
-    // If admin hasn't added a user_roles entry but profile has assessor assignment, treat as assessor
+    // If admin hasn't added a role in profiles entry but profile has assessor assignment, treat as assessor
     if (profileData?.assessor_assigned_at) return 'assessor';
 
     return 'student';
