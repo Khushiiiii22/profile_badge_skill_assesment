@@ -35,7 +35,7 @@ export const AdminRoute = ({ children }: AdminRouteProps) => {
         .from('profiles')
         .select('role')
         .eq('id', session.user.id)
-        .in('role', [''admin', sba_admin', 'school_admin'])
+        .in('role', ['admin', 'sba_admin', 'school_admin'])
         .single();
 
       if (error || !userRole) {
