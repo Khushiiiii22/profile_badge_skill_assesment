@@ -144,10 +144,11 @@ const AdminDashboard = () => {
   const fetchAssessorRequests = async () => {
     try {
       const { data, error } = await supabase
-        .from('assessor_requests')
-        .select('*')
-        .eq('status', 'pending')
-        .order('requested_at', { ascending: false });
+      .from('profiles')
+      .select('id, full_name, email, role, status')
+      .eq('role', 'assessor')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
       if (error) throw error;
       setAssessorRequests(data || []);
       setPendingRequestsCount(data?.length || 0);
@@ -253,34 +254,22 @@ const AdminDashboard = () => {
     navigate("/auth");
   };
 
-  const handleApproveAssessor = async (requestId: string, userId: string) => {
+  const handleApproveAssessor = async (userId: string) => {
     try {
-      setActionLoading(requestId);
+      setActionLoading(userId);
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('No session');
-      // Update assessor request status
-      const { error: requestError } = await supabase
-        .from('assessor_requests')
-        .update({
-          status: 'approved',
-          reviewed_at: new Date().toISOString(),
-          reviewed_by: session.user.id,
-        })
-        .eq('id', requestId);
-      if (requestError) throw requestError;
+      // Update profile status to approved
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .update({ status: 'approved' })
+      .eq('id', userId);
+          if (profileError) throw profileError;
       // Add assessor role to user_roles
       const { error: roleError } = await supabase
         .from('user_roles')
         .upsert({ user_id: userId, role: 'assessor' });
       if (roleError) throw roleError;
-      // Update profiles table with assignment details
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({
-          assessor_assigned_at: new Date().toISOString(),
-          assessor_assigned_by: session.user.id,
-        })
-        .eq('id', userId);
       if (profileError) throw profileError;
       toast({
         title: "Assessor Approved",
@@ -300,19 +289,18 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleRejectAssessor = async (requestId: string) => {
-    try {
-      setActionLoading(requestId);
+  const handleRejectAssessor = async (userId: string) => {    try {
+      setActionLoading(userId);
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('No session');
       const { error } = await supabase
-        .from('assessor_requests')
+        .from('profiles')
         .update({
           status: 'rejected',
           reviewed_at: new Date().toISOString(),
           reviewed_by: session.user.id,
         })
-        .eq('id', requestId);
+        .eq('id', userId);
       if (error) throw error;
       toast({
         title: "Assessor Rejected",
@@ -557,7 +545,6 @@ const AdminDashboard = () => {
                             <TableRow>
                               <TableHead>Name</TableHead>
                               <TableHead>Email</TableHead>
-                              <TableHead>Experience</TableHead>
                               <TableHead>Application Date</TableHead>
                               <TableHead>Status</TableHead>
                               <TableHead>Actions</TableHead>
@@ -580,7 +567,7 @@ const AdminDashboard = () => {
                                         <Button
                                           size="sm"
                                           variant="default"
-                                          onClick={() => handleApproveAssessor(request.id, request.user_id)}
+                                          onClick={() => handleApproveAssessor(request.id
                                           disabled={actionLoading === request.id}
                                         >
                                           <CheckCircle className="w-4 h-4 mr-1" />
