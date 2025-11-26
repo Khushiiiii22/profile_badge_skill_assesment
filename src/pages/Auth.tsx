@@ -122,7 +122,8 @@ const Auth = () => {
             id: data.user.id,
             full_name: name.trim(),
             email: email.trim(),
-            assessment_access: role === 'student',
+            role: role,
+                        status: role === 'student' ? 'approved' : 'pending',
           });
         await supabase
           .from('user_roles')
@@ -138,12 +139,20 @@ const Auth = () => {
               status: 'pending',
             });
         }
-        toast({
+        
+        if (role === 'student') {
+          toast({
           title: "Account Created!",
           description: "Welcome to SkillN. Redirecting to your profile...",
         });
-        navigate('/my-skill-profile');
-      }
+                    navigate('/my-skill-profile');
+                  } else if (role === 'assessor') {
+                    toast({
+            title: "Account Pending Approval",
+            description: "Your assessor account is pending admin approval. You will be notified once approved.",
+          });
+          navigate('/assessor-dashboard');
+        }
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         toast({
