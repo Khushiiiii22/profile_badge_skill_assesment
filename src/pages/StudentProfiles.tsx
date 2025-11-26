@@ -41,18 +41,57 @@ const StudentProfiles = () => {
 
   const fetchStudentProfiles = async () => {
     try {
-      // Fetch all profiles
+      // Fetch only users with student role from user_roles table
+      const { data: studentRoles, error: rolesError } = await supabase
+        .from('user_roles')
+        .select('user_id')
+        .eq('role', 'student');
+
+      if (rolesError) throw rolesError;
+
+      // Extract student user IDs
+      const studentIds = (studentRoles || []).map(role => role.user_id);
+
+      if (studentIds.length === 0) {
+        setStudents([]);
+        setLoading(false);
+        return;
+      }
+
+      // Fetch users who have assessor or admin roles (to exclude them)
+      const { data: assessorRoles } = await supabase
+        .from('user_roles')
+        .select('user_id')
+        .in('role', ['assessor', 'admin']);
+
+      // Exclude users who are assessors or admins
+      const assessorIds = new Set((assessorRoles || []).map(role => role.user_id));
+      const pureStudentIds = studentIds.filter(id => !assessorIds.has(id));
+
+      if (pureStudentIds.length === 0) {
+        setStudents([]);
+        setLoading(false);
+        return;
+      }
+
+      console.log('📊 Pure student IDs:', pureStudentIds.length);
+
+      // Fetch profiles for students only (excluding assessors/admins)
       const { data: profiles, error: profileError } = await supabase
         .from('profiles')
         .select('*')
+        .in('id', pureStudentIds)
         .order('created_at', { ascending: false });
 
       if (profileError) throw profileError;
 
-      // Fetch all assessments
+      console.log('📊 Fetched profiles:', profiles?.map(p => ({ id: p.id, full_name: p.full_name, email: p.email })));
+
+      // Fetch all assessments for students only
       const { data: assessments, error: assessmentError } = await supabase
         .from('assessments')
         .select('*')
+        .in('user_id', pureStudentIds)
         .order('created_at', { ascending: false });
 
       if (assessmentError) throw assessmentError;
@@ -73,9 +112,13 @@ const StudentProfiles = () => {
         const assessments = assessmentMap.get(profile.id) || [];
         // "accepted" or "approved" as per your business logic—adjust as needed:
         const isCertified = assessments.some(a => a.status === 'accepted' || a.status === 'approved' || a.status === "completed");
+        
+        // Get name with proper fallback
+        const displayName = profile.full_name || profile.email?.split('@')[0] || 'Student';
+        
         return {
           id: profile.id,
-          name: profile.full_name || profile.name || 'Unknown',
+          name: displayName,
           email: profile.email,
           phone: profile.phone,
           created_at: profile.created_at,

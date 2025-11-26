@@ -114,30 +114,55 @@ const Auth = () => {
           data: { name: name.trim() }
         }
       });
+      
       if (error) throw error;
+      
       if (data.user) {
-        await supabase
+        console.log('✅ User created:', data.user.id);
+        
+        // Wait a moment for the trigger to create the profile
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Update the profile with full_name (trigger creates it with name from metadata)
+        const { error: updateError } = await supabase
           .from('profiles')
-          .insert({
-            id: data.user.id,
-            full_name: name.trim(),
-            email: email.trim(),
-            role: role,
-                        status: role === 'student' ? 'approved' : 'pending',
-          });
-        await supabase
+          .update({ full_name: name.trim() })
+          .eq('id', data.user.id);
+        
+        if (updateError) {
+          console.error('⚠️ Error updating profile:', updateError);
+        }
+        
+        // Insert user role
+        const { error: roleError } = await supabase
           .from('user_roles')
           .insert({
             user_id: data.user.id,
             role: role,
           });
+        
+        if (roleError) {
+          console.error('❌ Error inserting user_roles:', roleError);
+          throw roleError;
+        }
+        
+        console.log('✅ Inserted user role:', role);
+        
+        // Create assessor request if role is assessor
         if (role === 'assessor') {
-          await supabase
+          const { error: assessorError } = await supabase
             .from('assessor_requests')
             .insert({
               user_id: data.user.id,
               status: 'pending',
             });
+          
+          if (assessorError) {
+            console.error('❌ Error creating assessor_requests:', assessorError);
+            throw assessorError;
+          }
+          
+          console.log('✅ Created assessor request');
         }
         
         if (role === 'student') {
@@ -153,6 +178,7 @@ const Auth = () => {
           });
           navigate('/assessor-dashboard');
         }
+      }
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         toast({

@@ -143,55 +143,150 @@ const AdminDashboard = () => {
 
   const fetchAssessorRequests = async () => {
     try {
-      const { data, error } = await supabase
-      .from('profiles')
-      .select('id, full_name, email, role, status')
-      .eq('role', 'assessor')
-      .eq('status', 'pending')
-      .order('created_at', { ascending: false });
-      if (error) throw error;
-      setAssessorRequests(data || []);
-      setPendingRequestsCount(data?.length || 0);
+      console.log('🔍 Fetching assessor requests...');
+      
+      // First, try to get ALL assessor requests to see if any exist
+      const { data: allRequests, error: allError } = await supabase
+        .from('assessor_requests')
+        .select('*');
+      
+      console.log(`📊 Total assessor requests in database: ${allRequests?.length || 0}`, allRequests);
+      
+      // Log the actual status values to debug the issue
+      if (allRequests && allRequests.length > 0) {
+        console.log('🔎 Status values found:', allRequests.map((r: any) => ({ 
+          user_id: r.user_id, 
+          status: r.status,
+          status_type: typeof r.status,
+          status_length: r.status?.length
+        })));
+      }
+      
+      const { data: requests, error } = await supabase
+        .from('assessor_requests')
+        .select('*')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        console.error('❌ Error fetching assessor_requests:', error);
+        throw error;
+      }
+      
+      console.log(`📋 Found ${requests?.length || 0} pending assessor requests`, requests);
+      
+      // Fetch profile details for each request
+      if (requests && requests.length > 0) {
+        const userIds = requests.map((r: any) => r.user_id);
+        const { data: profiles, error: profileError } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .in('id', userIds);
+        
+        if (profileError) {
+          console.error('❌ Error fetching profiles:', profileError);
+        }
+        
+        // Merge profile data with requests
+        const requestsWithProfiles = requests.map((request: any) => {
+          const profile = profiles?.find((p: any) => p.id === request.user_id);
+          return {
+            ...request,
+            full_name: profile?.full_name || 'Unknown',
+            email: profile?.email || 'N/A',
+          };
+        });
+        
+        console.log('✅ Assessor requests with profiles:', requestsWithProfiles);
+        setAssessorRequests(requestsWithProfiles);
+        setPendingRequestsCount(requestsWithProfiles.length);
+      } else {
+        setAssessorRequests([]);
+        setPendingRequestsCount(0);
+      }
     } catch (error: any) {
-      console.error('Error fetching assessor requests:', error);
+      console.error('❌ Error in fetchAssessorRequests:', error);
     }
   };
 
   const fetchApprovedAssessors = async () => {
     try {
+      console.log('🔍 Fetching approved assessors...');
+      
+      // Get all users with assessor role
       const { data: userRoles, error: rolesError } = await supabase
         .from('user_roles')
         .select('user_id')
         .eq('role', 'assessor');
-      if (rolesError) throw rolesError;
+      
+      if (rolesError) {
+        console.error('❌ Error fetching assessor roles:', rolesError);
+        throw rolesError;
+      }
+      
       if (!userRoles || userRoles.length === 0) {
+        console.log('📋 No assessors found in user_roles');
         setApprovedAssessors([]);
         setActiveAssessorsCount(0);
         return;
       }
+      
+      console.log('📊 Found assessors:', userRoles.length);
+      
+      // Get only approved assessors from assessor_requests
       const userIds = userRoles.map(role => role.user_id);
+      const { data: approvedRequests, error: requestsError } = await supabase
+        .from('assessor_requests')
+        .select('user_id, created_at')
+        .eq('status', 'approved')
+        .in('user_id', userIds);
+      
+      if (requestsError) {
+        console.error('❌ Error fetching approved requests:', requestsError);
+        throw requestsError;
+      }
+      
+      if (!approvedRequests || approvedRequests.length === 0) {
+        console.log('📋 No approved assessor requests found');
+        setApprovedAssessors([]);
+        setActiveAssessorsCount(0);
+        return;
+      }
+      
+      console.log('✅ Found approved assessors:', approvedRequests.length);
+      
+      // Fetch profiles for approved assessors only
+      const approvedUserIds = approvedRequests.map(req => req.user_id);
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
-        .select('id, full_name, email, assessor_assigned_at, assessor_assigned_by, assessment_count')
-        .in('id', userIds);
-      if (profilesError) throw profilesError;
-      // Fetch assessment counts for each assessor
-      const assessorsWithActivity = await Promise.all(
-        (profiles || []).map(async (profile) => {
-          const { count: assessmentsReviewed } = await supabase
-            .from('assessments')
-            .select('id', { count: 'exact', head: true })
-            .eq('assessor_id', profile.id);
-          return {
-            ...profile,
-            assessments_reviewed: assessmentsReviewed || 0,
-          };
-        })
-      );
+        .select('id, full_name, email')
+        .in('id', approvedUserIds);
+      
+      if (profilesError) {
+        console.error('❌ Error fetching profiles:', profilesError);
+        throw profilesError;
+      }
+      
+      // Note: assessments table doesn't have assessor_id column
+      // For now, we'll just show the list of approved assessors
+      const assessorsWithActivity = (profiles || []).map((profile: any) => {
+        const request = approvedRequests.find(r => r.user_id === profile.id);
+        return {
+          id: profile.id,
+          full_name: profile.full_name || 'Unknown',
+          email: profile.email || 'N/A',
+          approved_at: request?.created_at || null,
+          assessments_reviewed: 0, // TODO: Add when assessor_id column is added to assessments
+        };
+      });
+      
+      console.log('📋 Approved assessors with activity:', assessorsWithActivity);
       setApprovedAssessors(assessorsWithActivity);
       setActiveAssessorsCount(assessorsWithActivity.length);
     } catch (error: any) {
-      console.error('Error fetching approved assessors:', error);
+      console.error('❌ Error in fetchApprovedAssessors:', error);
+      setApprovedAssessors([]);
+      setActiveAssessorsCount(0);
     }
   };
 
@@ -254,23 +349,53 @@ const AdminDashboard = () => {
     navigate("/auth");
   };
 
-  const handleApproveAssessor = async (userId: string) => {
+  const handleApproveAssessor = async (requestId: string, userId: string) => {
     try {
-      setActionLoading(userId);
+      setActionLoading(requestId);
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('No session');
-      // Update profile status to approved
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .update({ status: 'approved' })
-      .eq('id', userId);
-          if (profileError) throw profileError;
-      // Add assessor role to user_roles
-      const { error: roleError } = await supabase
+      
+      console.log('🔄 Approving assessor:', { requestId, userId });
+      
+      // Update assessor request status
+      const { error: requestError } = await supabase
+        .from('assessor_requests')
+        .update({
+          status: 'approved',
+          reviewed_at: new Date().toISOString(),
+          reviewed_by: session.user.id,
+        } as any)
+        .eq('id', requestId);
+      
+      if (requestError) {
+        console.error('❌ Error updating assessor_requests:', requestError);
+        throw requestError;
+      }
+      console.log('✅ Updated assessor_requests status to approved');
+      
+      // Check if assessor role already exists
+      const { data: existingRole } = await supabase
         .from('user_roles')
-        .upsert({ user_id: userId, role: 'assessor' });
-      if (roleError) throw roleError;
-      if (profileError) throw profileError;
+        .select('id')
+        .eq('user_id', userId)
+        .eq('role', 'assessor')
+        .maybeSingle();
+      
+      if (!existingRole) {
+        // Add assessor role to user_roles only if it doesn't exist
+        const { error: roleError } = await supabase
+          .from('user_roles')
+          .insert({ user_id: userId, role: 'assessor' } as any);
+        
+        if (roleError) {
+          console.error('❌ Error inserting into user_roles:', roleError);
+          throw roleError;
+        }
+        console.log('✅ Added assessor role to user_roles');
+      } else {
+        console.log('ℹ️ Assessor role already exists for user');
+      }
+      
       toast({
         title: "Assessor Approved",
         description: "The assessor application has been approved successfully.",
@@ -278,7 +403,7 @@ const AdminDashboard = () => {
       await fetchAssessorRequests();
       await fetchApprovedAssessors();
     } catch (error: any) {
-      console.error('Error approving assessor:', error);
+      console.error('❌ Error approving assessor:', error);
       toast({
         title: "Error",
         description: "Failed to approve assessor application.",
@@ -289,26 +414,38 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleRejectAssessor = async (userId: string) => {    try {
-      setActionLoading(userId);
+  const handleRejectAssessor = async (requestId: string, userId: string) => {
+    try {
+      setActionLoading(requestId);
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('No session');
+      
+      console.log('🔄 Rejecting assessor request:', { requestId, userId });
+      
+      // Update assessor_requests status to rejected
       const { error } = await supabase
-        .from('profiles')
+        .from('assessor_requests')
         .update({
           status: 'rejected',
           reviewed_at: new Date().toISOString(),
           reviewed_by: session.user.id,
-        })
-        .eq('id', userId);
-      if (error) throw error;
+        } as any)
+        .eq('id', requestId);
+      
+      if (error) {
+        console.error('❌ Error updating assessor_requests:', error);
+        throw error;
+      }
+      
+      console.log('✅ Rejected assessor request');
+      
       toast({
         title: "Assessor Rejected",
         description: "The assessor application has been rejected.",
       });
       await fetchAssessorRequests();
     } catch (error: any) {
-      console.error('Error rejecting assessor:', error);
+      console.error('❌ Error rejecting assessor:', error);
       toast({
         title: "Error",
         description: "Failed to reject assessor application.",
@@ -322,29 +459,41 @@ const AdminDashboard = () => {
   const handleRemoveAssessor = async (userId: string) => {
     try {
       setActionLoading(userId);
-      // Remove assessor role
+      
+      console.log('🔄 Removing assessor role for user:', userId);
+      
+      // Remove assessor role from user_roles
       const { error: roleError } = await supabase
         .from('user_roles')
         .delete()
         .eq('user_id', userId)
         .eq('role', 'assessor');
-      if (roleError) throw roleError;
-      // Clear assessor assignment details from profiles
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({
-          assessor_assigned_at: null,
-          assessor_assigned_by: null,
-        })
-        .eq('id', userId);
-      if (profileError) throw profileError;
+      
+      if (roleError) {
+        console.error('❌ Error deleting from user_roles:', roleError);
+        throw roleError;
+      }
+      
+      console.log('✅ Removed assessor role');
+      
+      // Update assessor_requests status to rejected (optional - keeps history)
+      const { error: requestError } = await supabase
+        .from('assessor_requests')
+        .update({ status: 'rejected' } as any)
+        .eq('user_id', userId)
+        .eq('status', 'approved');
+      
+      if (requestError) {
+        console.log('⚠️ Note: Could not update assessor_requests:', requestError);
+      }
+      
       toast({
         title: "Assessor Removed",
         description: "The assessor role has been removed successfully.",
       });
       await fetchApprovedAssessors();
     } catch (error: any) {
-      console.error('Error removing assessor:', error);
+      console.error('❌ Error removing assessor:', error);
       toast({
         title: "Error",
         description: "Failed to remove assessor role.",
@@ -567,7 +716,7 @@ const AdminDashboard = () => {
                                         <Button
                                           size="sm"
                                           variant="default"
-                                          onClick={() => handleApproveAssessor(request.id
+                                          onClick={() => handleApproveAssessor(request.id, request.user_id)}
                                           disabled={actionLoading === request.id}
                                         >
                                           <CheckCircle className="w-4 h-4 mr-1" />
@@ -576,7 +725,7 @@ const AdminDashboard = () => {
                                         <Button
                                           size="sm"
                                           variant="destructive"
-                                          onClick={() => handleRejectAssessor(request.id)}
+                                          onClick={() => handleRejectAssessor(request.id, request.user_id)}
                                           disabled={actionLoading === request.id}
                                         >
                                           <XCircle className="w-4 h-4 mr-1" />

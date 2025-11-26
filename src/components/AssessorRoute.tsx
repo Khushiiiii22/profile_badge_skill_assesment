@@ -32,11 +32,12 @@ export const AssessorRoute = ({ children }: AssessorRouteProps) => {
       }
 
       const { data: rolesData, error } = await supabase
-        .from('profiles')
+        .from('user_roles')
         .select('role')
-        .eq('id', session.user.id);
+        .eq('user_id', session.user.id);
 
       if (error) {
+        console.error('Error fetching user roles:', error);
         toast({
           title: "Access Denied",
           description: "You don't have assessor privileges to access this page.",
@@ -47,7 +48,9 @@ export const AssessorRoute = ({ children }: AssessorRouteProps) => {
       }
 
       const roles = (rolesData || []).map((r: any) => (typeof r.role === 'string' ? r.role.trim().toLowerCase() : ''));
-      if (!roles.includes('assessor')) {
+      console.log('🔐 AssessorRoute - User roles:', roles);
+      
+      if (!roles.includes('assessor') && !roles.includes('admin')) {
         toast({
           title: "Access Denied",
           description: "You don't have assessor privileges to access this page.",
@@ -57,6 +60,7 @@ export const AssessorRoute = ({ children }: AssessorRouteProps) => {
         return;
       }
 
+      console.log('✅ AssessorRoute - Access granted for user:', session.user.id);
       setIsAssessor(true);
       setLoading(false);
 

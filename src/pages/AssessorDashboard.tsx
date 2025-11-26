@@ -49,6 +49,8 @@ const AssessorDashboard = () => {
   const [rejectionReason, setRejectionReason] = useState("");
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [activeTab, setActiveTab] = useState<'pending' | 'all'>('pending');
+  const [approvalStatus, setApprovalStatus] = useState<'pending' | 'approved' | 'rejected'>('pending');
+  const [isApproved, setIsApproved] = useState(false);
 
   useEffect(() => {
     fetchAssessments();
@@ -85,7 +87,7 @@ const AssessorDashboard = () => {
       }
 
       const roles = (rolesData || []).map((r: any) => (typeof r.role === 'string' ? r.role.trim().toLowerCase() : ''));
-      if (!roles.includes('assessor')) {
+      if (!roles.includes('assessor') && !roles.includes('admin')) {
         toast({
           title: "Access Denied",
           description: "You don't have assessor privileges to access this page.",
@@ -95,24 +97,75 @@ const AssessorDashboard = () => {
         return;
       }
 
+      // Check assessor approval status (skip for admin)
+      if (roles.includes('assessor') && !roles.includes('admin')) {
+        console.log('🔍 Checking assessor approval status for user:', session.user.id);
+        
+        const { data: assessorRequests, error: requestError } = await supabase
+          .from('assessor_requests')
+          .select('status')
+          .eq('user_id', session.user.id);
+
+        console.log('📊 Assessor requests data:', assessorRequests, 'Error:', requestError);
+
+        const assessorRequest = assessorRequests && assessorRequests.length > 0 ? assessorRequests[0] : null;
+
+        if (assessorRequest) {
+          console.log('✅ Found assessor request with status:', assessorRequest.status);
+          setApprovalStatus(assessorRequest.status as 'pending' | 'approved' | 'rejected');
+          setIsApproved(assessorRequest.status === 'approved');
+          
+          if (assessorRequest.status !== 'approved') {
+            console.log('⏸️ Status is not approved, stopping here');
+            setLoading(false);
+            return; // Don't fetch assessments if not approved
+          }
+          console.log('🎉 Status is approved! Continuing to fetch assessments...');
+        } else {
+          console.log('⚠️ No assessor request found, defaulting to pending');
+          setApprovalStatus('pending');
+          setIsApproved(false);
+          setLoading(false);
+          return;
+        }
+      } else {
+        // Admin has full access
+        console.log('👑 Admin access detected');
+        setIsApproved(true);
+        setApprovalStatus('approved');
+      }
+
       // Fetch all assessments with their profiles for assessor view
       const { data, error } = await supabase
         .from('assessments')
-        .select(`
-          *,
-          profiles:user_id (
-            full_name,
-            email
-          )
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
+      
       if (error) throw error;
 
-            // Transform the data to match expected format
-      const assessmentsWithProfiles = (data || []).map(assessment => ({
+      // Fetch profiles separately to avoid foreign key issues
+      const assessmentData = data || [];
+      const userIds = [...new Set(assessmentData.map(a => a.user_id))];
+      
+      let profilesMap: Record<string, any> = {};
+      if (userIds.length > 0) {
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .in('id', userIds);
+        
+        profilesMap = (profilesData || []).reduce((acc, profile) => {
+          acc[profile.id] = profile;
+          return acc;
+        }, {} as Record<string, any>);
+      }
+
+      // Transform the data to match expected format
+      const assessmentsWithProfiles = assessmentData.map(assessment => ({
         ...assessment,
-        profile_full_name: assessment.profiles?.full_name || 'Unknown',
-        profile_email: assessment.profiles?.email || '',
+        profiles: profilesMap[assessment.user_id] || null,
+        profile_full_name: profilesMap[assessment.user_id]?.full_name || 'Unknown',
+        profile_email: profilesMap[assessment.user_id]?.email || '',
       }));
       setAllAssessments(assessmentsWithProfiles);
       // Filter pending assessments for the main view
@@ -137,24 +190,35 @@ const AssessorDashboard = () => {
     try {
       setActionLoading(assessmentId);
       const { data: { session } } = await supabase.auth.getSession();
+      
+      console.log('🔄 Approving assessment:', assessmentId);
+      
       const { error } = await supabase
         .from('assessments')
         .update({
-          approved: true,
-          status: 'approved',
-          approved_by: session?.user.id,
-          approved_at: new Date().toISOString(),
-          assessor_id: session?.user.id
-        })
+          status: 'completed',
+          approved: true
+        } as any)
         .eq('id', assessmentId);
-      if (error) throw error;
+      
+      if (error) {
+        console.error('❌ Error approving assessment:', error);
+        console.error('❌ Error code:', error.code);
+        console.error('❌ Error message:', error.message);
+        console.error('❌ Error details:', error.details);
+        console.error('❌ Error hint:', error.hint);
+        throw error;
+      }
+      
+      console.log('✅ Assessment approved successfully');
+      
       toast({
         title: "Assessment Approved",
         description: "The assessment has been successfully approved and certificate issued.",
       });
       await fetchAssessments();
     } catch (error: any) {
-      console.error('Error approving assessment:', error);
+      console.error('❌ Error approving assessment:', error);
       toast({
         title: "Error",
         description: "Failed to approve assessment.",
@@ -171,15 +235,23 @@ const AssessorDashboard = () => {
     try {
       setActionLoading(selectedAssessment.id);
       const { data: { session } } = await supabase.auth.getSession();
+      
+      console.log('🔄 Rejecting assessment:', selectedAssessment.id);
+      
       const { error } = await supabase
         .from('assessments')
         .update({
-            status: 'rejected',
-            assessor_id: session?.user.id,
-            rejection_reason: rejectionReason.trim()
-          })
+          status: 'rejected'
+        } as any)
         .eq('id', selectedAssessment.id);
-      if (error) throw error;
+      
+      if (error) {
+        console.error('❌ Error rejecting assessment:', error);
+        throw error;
+      }
+      
+      console.log('✅ Assessment rejected successfully');
+      
       toast({
         title: "Assessment Rejected",
         description: "The assessment has been rejected. Student can request re-examination.",
@@ -189,7 +261,7 @@ const AssessorDashboard = () => {
       setSelectedAssessment(null);
       await fetchAssessments();
     } catch (error: any) {
-      console.error('Error rejecting assessment:', error);
+      console.error('❌ Error rejecting assessment:', error);
       toast({
         title: "Error",
         description: "Failed to reject assessment.",
@@ -246,6 +318,77 @@ const AssessorDashboard = () => {
         <div className="text-center">
           <Clock className="h-12 w-12 text-primary animate-pulse mx-auto mb-4" />
           <p className="text-muted-foreground">Loading assessor dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show pending approval message if assessor is not approved
+  if (!isApproved) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-3xl mx-auto">
+            {/* Top bar with Sign Out button */}
+            <div className="flex justify-end mb-8">
+              <Button variant="ghost" onClick={handleSignOut}>
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign Out
+              </Button>
+            </div>
+
+            {/* Pending Approval Card */}
+            <Card className="border-2 border-yellow-200">
+              <CardHeader className="text-center pb-4">
+                <div className="mx-auto mb-4 p-4 bg-yellow-100 rounded-full w-20 h-20 flex items-center justify-center">
+                  <Clock className="h-10 w-10 text-yellow-600" />
+                </div>
+                <CardTitle className="text-2xl">
+                  {approvalStatus === 'pending' && 'Assessor Application Pending'}
+                  {approvalStatus === 'rejected' && 'Assessor Application Rejected'}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-center space-y-4">
+                {approvalStatus === 'pending' && (
+                  <>
+                    <p className="text-lg text-muted-foreground">
+                      Your assessor application is currently under review by the admin team.
+                    </p>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6">
+                      <h3 className="font-semibold text-blue-900 mb-2">What happens next?</h3>
+                      <ul className="text-sm text-blue-800 space-y-2 text-left max-w-md mx-auto">
+                        <li className="flex items-start">
+                          <CheckCircle className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
+                          <span>An admin will review your application</span>
+                        </li>
+                        <li className="flex items-start">
+                          <CheckCircle className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
+                          <span>You'll receive a notification once approved</span>
+                        </li>
+                        <li className="flex items-start">
+                          <CheckCircle className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
+                          <span>After approval, you can review student assessments</span>
+                        </li>
+                      </ul>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-4">
+                      This usually takes 24-48 hours. Please check back later.
+                    </p>
+                  </>
+                )}
+                {approvalStatus === 'rejected' && (
+                  <>
+                    <p className="text-lg text-destructive">
+                      Unfortunately, your assessor application has been rejected.
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Please contact the admin team for more information.
+                    </p>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     );
